@@ -1,0 +1,26 @@
+# ── Staging data ──────────────────────────────────────────────
+staging/
+
+# ── Go ────────────────────────────────────────────────────────
+ingestion-go/bin/
+ingestion-go/vendor/
+
+# ── Scala / SBT ──────────────────────────────────────────────
+processing-scala/target/
+processing-scala/project/target/
+processing-scala/project/project/
+
+# ── Python ────────────────────────────────────────────────────
+ml-python/.venv/
+ml-python/__pycache__/
+ml-python/helios_ml/__pycache__/
+ml-python/*.egg-info/
+ml-python/dist/
+ml-python/models/
+
+# ── IDE / OS ──────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store

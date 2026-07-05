@@ -1,0 +1,2 @@
+# This directory is used by the Go ingestion pipeline.
+# Parquet files will be written here, partitioned by data kind.
