@@ -1,14 +1,3 @@
-// Package main is the entry-point for the Helios ingestion pipeline.
-//
-// It launches a bounded worker pool of goroutines that concurrently:
-//  1. Fetch Landsat GeoTIFF tiles from a remote catalog.
-//  2. Parse raw OpenStreetMap (OSM) spatial shards.
-//  3. Serialize cleaned records into partitioned Parquet files
-//     under the staging directory.
-//
-// Usage:
-//
-//	go run ./cmd/ingest --output-dir ./staging/raw --workers 8
 package main
 
 import (
@@ -21,24 +10,27 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/helios/ingestion/internal/config"
+	"github.com/helios/ingestion/internal/fetcher"
 	"github.com/helios/ingestion/internal/worker"
 )
 
 func main() {
-	// ── CLI flags ────────────────────────────────────────────────────
 	outputDir := flag.String("output-dir", "./staging/raw", "Directory for raw parquet output")
 	numWorkers := flag.Int("workers", 8, "Number of concurrent download workers")
+	stacURL := flag.String("stac-url", "https://landsatlook.usgs.gov/stac-server", "STAC API base URL")
+	bbox := flag.String("bbox", "80.0,12.8,80.4,13.2", "Bounding box: min_lon,min_lat,max_lon,max_lat")
+	startYear := flag.Int("start-year", 2014, "Start year for scene search")
+	endYear := flag.Int("end-year", 2023, "End year for scene search")
+	maxCloud := flag.Float64("max-cloud", 10, "Maximum cloud cover percentage")
 	flag.Parse()
 
-	// ── Logger ───────────────────────────────────────────────────────
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
-	// ── Graceful shutdown ────────────────────────────────────────────
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	// ── Ensure output directory exists ───────────────────────────────
 	absOut, err := filepath.Abs(*outputDir)
 	if err != nil {
 		slog.Error("invalid output path", "error", err)
@@ -49,10 +41,50 @@ func main() {
 		os.Exit(1)
 	}
 
-	// ── Build work manifest ──────────────────────────────────────────
-	// In production this would come from a tile index API or a local
-	// manifest file. Here we generate synthetic task descriptors.
-	tasks := buildDemoManifest()
+	parsedBBox, err := config.ParseBBox(*bbox)
+	if err != nil {
+		slog.Error("invalid bbox", "error", err)
+		os.Exit(1)
+	}
+
+	landsatCfg := config.LandsatConfig{
+		STACURL:   *stacURL,
+		BBox:      parsedBBox,
+		StartYear: *startYear,
+		EndYear:   *endYear,
+		MaxCloud:  *maxCloud,
+	}
+
+	slog.Info("discovering Landsat scenes",
+		"stac_url", landsatCfg.STACURL,
+		"bbox", landsatCfg.BBox,
+		"years", fmt.Sprintf("%d-%d", landsatCfg.StartYear, landsatCfg.EndYear),
+		"max_cloud", landsatCfg.MaxCloud,
+	)
+
+	assets, err := fetcher.DiscoverScenes(ctx, landsatCfg)
+	if err != nil {
+		slog.Error("scene discovery failed", "error", err)
+		os.Exit(1)
+	}
+
+	var tasks []worker.Task
+	if len(assets) > 0 {
+		for _, a := range assets {
+			tasks = append(tasks, worker.Task{
+				Kind:       "landsat",
+				ID:         a.SceneID + "_" + a.BandKey,
+				SourceURL:  a.DownloadURL,
+				Band:       a.BandName,
+				Timestamp:  a.Timestamp,
+				CloudCover: a.CloudCover,
+			})
+		}
+	} else {
+		slog.Warn("no Landsat scenes found, falling back to demo manifest",
+			"bbox", *bbox, "cloud_max", *maxCloud)
+		tasks = buildDemoManifest()
+	}
 
 	slog.Info("starting ingestion",
 		"workers", *numWorkers,
@@ -60,7 +92,6 @@ func main() {
 		"output", absOut,
 	)
 
-	// ── Launch pool ──────────────────────────────────────────────────
 	pool := worker.NewPool(*numWorkers, absOut, logger)
 	stats, err := pool.Run(ctx, tasks)
 	if err != nil {
@@ -75,10 +106,7 @@ func main() {
 	)
 }
 
-// buildDemoManifest returns synthetic tile descriptors for demonstration.
-// Replace with a real catalog reader (e.g., STAC API client) in production.
 func buildDemoManifest() []worker.Task {
-	// Simulated Landsat WRS-2 path/row tiles + OSM region shards
 	tiles := []struct {
 		kind string
 		id   string
@@ -108,5 +136,5 @@ func buildDemoManifest() []worker.Task {
 }
 
 func init() {
-	fmt.Fprintln(os.Stderr, "helios/ingestion — concurrent GeoTIFF & OSM fetcher")
+	fmt.Fprintln(os.Stderr, "helios/ingestion — concurrent Landsat & OSM fetcher")
 }
