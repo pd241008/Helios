@@ -8,11 +8,13 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/helios/ingestion/internal/config"
 	"github.com/helios/ingestion/internal/fetcher"
+	"github.com/helios/ingestion/internal/parser"
 	"github.com/helios/ingestion/internal/worker"
 )
 
@@ -25,6 +27,8 @@ func main() {
 	endYear := flag.Int("end-year", 2023, "End year for scene search")
 	maxCloud := flag.Float64("max-cloud", 10, "Maximum cloud cover percentage")
 	fetchSplitWindow := flag.Bool("fetch-split-window", false, "Fetch TOA B10/B11 for split-window LST")
+	lulcShapefile := flag.String("lulc-shapefile", "", "Path to .shp shapefile for LULC features")
+	lulcGeoJSON := flag.String("lulc-geojson", "", "Path to .geojson file for LULC features")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -60,6 +64,21 @@ func main() {
 		RetryAttempts:    3,
 		RetryBackoff:     500 * time.Millisecond,
 		StagingDir:       absOut,
+	}
+
+	// ── Phase 1.2: Vector data processing (Shapefile / GeoJSON) ──
+	vectorOut := filepath.Join(absOut, "lulc")
+	if *lulcShapefile != "" {
+		if err := processShapefile(ctx, *lulcShapefile, vectorOut); err != nil {
+			slog.Error("shapefile processing failed", "error", err)
+			os.Exit(1)
+		}
+	}
+	if *lulcGeoJSON != "" {
+		if err := processGeoJSON(ctx, *lulcGeoJSON, vectorOut); err != nil {
+			slog.Error("geojson processing failed", "error", err)
+			os.Exit(1)
+		}
 	}
 
 	if cfg.FetchSplitWindow {
@@ -166,6 +185,46 @@ func main() {
 		"failed", stats.Failed,
 		"total_bytes", stats.TotalBytes,
 	)
+}
+
+func processShapefile(ctx context.Context, shpPath, outputDir string) error {
+	slog.Info("processing shapefile", "path", shpPath, "output", outputDir)
+
+	records, err := parser.ParseShapefile(shpPath, filepath.Base(shpPath))
+	if err != nil {
+		return fmt.Errorf("parse shapefile: %w", err)
+	}
+	slog.Info("parsed shapefile", "features", len(records))
+
+	outPath := filepath.Join(outputDir, strings.TrimSuffix(filepath.Base(shpPath), ".shp")+".parquet")
+	if err := parser.WriteRecords(outPath, records); err != nil {
+		return fmt.Errorf("write parquet: %w", err)
+	}
+	slog.Info("wrote lulc parquet", "path", outPath, "records", len(records))
+	return nil
+}
+
+func processGeoJSON(ctx context.Context, geojsonPath, outputDir string) error {
+	slog.Info("processing geojson", "path", geojsonPath, "output", outputDir)
+
+	data, err := os.ReadFile(geojsonPath)
+	if err != nil {
+		return fmt.Errorf("read geojson: %w", err)
+	}
+
+	sourceID := strings.TrimSuffix(filepath.Base(geojsonPath), ".geojson")
+	records, err := parser.ParseGeoJSON(data, sourceID)
+	if err != nil {
+		return fmt.Errorf("parse geojson: %w", err)
+	}
+	slog.Info("parsed geojson", "features", len(records))
+
+	outPath := filepath.Join(outputDir, sourceID+".parquet")
+	if err := parser.WriteRecords(outPath, records); err != nil {
+		return fmt.Errorf("write parquet: %w", err)
+	}
+	slog.Info("wrote lulc parquet", "path", outPath, "records", len(records))
+	return nil
 }
 
 func buildDemoManifest() []worker.Task {
