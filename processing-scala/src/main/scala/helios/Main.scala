@@ -1,85 +1,65 @@
 package helios
 
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.functions._
+import org.apache.sedona.sql.utils.SedonaSQLRegistrator
 
-/**
- * Entry point for the Helios Spark processing pipeline.
- *
- * Reads raw Parquet shards produced by the Go ingestion layer,
- * performs spatial joins, applies target encoding on high-cardinality
- * categorical columns (LULC classes, zoning), and writes a dense,
- * ML-ready Parquet matrix.
- *
- * Usage (via sbt):
- *   sbt "runMain helios.Main --input /staging/raw --output /staging/dense"
- */
 object Main {
 
   def main(args: Array[String]): Unit = {
-    // ── Parse CLI args ───────────────────────────────────────────
-    val argMap = parseArgs(args)
-    val inputDir  = argMap.getOrElse("input",  "./staging/raw")
-    val outputDir = argMap.getOrElse("output", "./staging/dense")
+    val cfg = PipelineConfig.fromArgs(args)
+    val metaDir = if (cfg.metadataDir.isEmpty) s"${cfg.inputDir}/landsat" else cfg.metadataDir
 
-    // ── Spark session ────────────────────────────────────────────
+    println(s"═══ Helios Processing Pipeline ═══")
+    println(s"  Input:   ${cfg.inputDir}")
+    println(s"  Output:  ${cfg.outputDir}")
+    println(s"  Zoning:  ${cfg.zoningPath}")
+    println(s"  Years:   train=${cfg.trainYearStart}-${cfg.trainYearEnd}  test=${cfg.testYearStart}-${cfg.testYearEnd}")
+
     val spark = SparkSession.builder()
       .appName("helios-processing")
-      .master("local[*]")  // Override in cluster submission
+      .master("local[*]")
       .config("spark.sql.adaptive.enabled", "true")
       .config("spark.sql.parquet.compression.codec", "zstd")
-      .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+      .config("spark.serializer", "org.apache.spark.serializer.JavaSerializer")
       .getOrCreate()
 
     spark.sparkContext.setLogLevel("WARN")
 
+    SedonaSQLRegistrator.registerAll(spark)
+
     try {
-      println(s"═══ Helios Processing Pipeline ═══")
-      println(s"  Input:  $inputDir")
-      println(s"  Output: $outputDir")
-
-      // ── 1. Read raw ingested Parquet ─────────────────────────
-      val rawDF = spark.read
-        .parquet(s"$inputDir/landsat", s"$inputDir/osm")
-        .na.drop()  // Drop rows with null values from incomplete fetches
-
-      println(s"  Raw records: ${rawDF.count()}")
-      rawDF.printSchema()
-
-      // ── 2. Spatial join (band pivot + OSM density merge) ────
-      val pivoted = SpatialJoin.pivotBands(rawDF)
-
-      // ── 3. Target encoding on high-cardinality LULC classes ─
-      //    This encodes the 18-fold LULC categories into
-      //    smoothed mean-target values, preventing overfitting
-      //    on rare classes.
-      val encoded = TargetEncoder.encode(
-        df          = pivoted,
-        targetCol   = "B10_TIR",       // Thermal band as proxy for LST
-        catCols     = Seq("lulc_class"),
-        smoothing   = 10.0
+      // ── Phase 2.1: Pivot + Spatial Join
+      println("\n═══ Phase 2.1: Pivot & Spatial Join ═══")
+      val joined = SpatialJoin.runPivotAndJoin(
+        spark, cfg.inputDir, cfg.zoningPath, cfg.lulcCategoryCol,
       )
 
-      // ── 4. Write dense ML-ready matrix ──────────────────────
-      encoded.write
-        .mode("overwrite")
-        .option("compression", "zstd")
-        .parquet(outputDir)
+      // ── Phase 2.2: LST Computation
+      println("\n═══ Phase 2.2: LST Computation ═══")
+      val meta = LSTMath.loadMetadata(spark, metaDir)
+      val metaCount = meta.count()
+      println(s"  Scene metadata files loaded: $metaCount")
+      val withLST = LSTMath.computeLST(joined, meta, cfg)
+      println(s"  LST computed: ${withLST.count()} rows")
 
-      println(s"  Dense matrix: ${encoded.count()} rows × ${encoded.columns.length} cols")
-      println(s"  Written to: $outputDir")
-      println(s"═══ Processing complete ═══")
+      // ── Phase 2.3: Target Encoding
+      println("\n═══ Phase 2.3: Target Encoding ═══")
+      val catCols = Seq("lulc_class", cfg.lulcCategoryCol).distinct
+      val availableCats = catCols.filter(withLST.columns.contains)
+      val encoded = TargetEncoder.encode(
+        withLST, targetCol = "lst", catCols = availableCats, smoothing = cfg.targetSmoothing,
+      )
+      println(s"  Target encoding complete: ${encoded.columns.length} cols")
+
+      // ── Phase 2.4: Feature Matrix Assembly & Write
+      println("\n═══ Phase 2.4: Feature Matrix ═══")
+      val matrix = FeatureMatrix.assemble(encoded, cfg)
+      FeatureMatrix.write(matrix, cfg.outputDir)
+
+      println("\n═══ Pipeline complete ═══")
 
     } finally {
       spark.stop()
     }
-  }
-
-  /** Simple --key value argument parser. */
-  private def parseArgs(args: Array[String]): Map[String, String] = {
-    args.sliding(2, 2).collect {
-      case Array(key, value) if key.startsWith("--") =>
-        key.stripPrefix("--") -> value
-    }.toMap
   }
 }

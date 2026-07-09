@@ -3,68 +3,80 @@ package helios
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.functions._
 
-/**
- * Spatial join and band-pivoting operations.
- *
- * Takes raw per-pixel/per-band records and pivots them into a wide
- * format where each spectral band becomes its own column, keyed by
- * (tile_id, lat, lon, timestamp).
- *
- * For production spatial joins (e.g., point-in-polygon with zoning
- * boundaries), integrate Apache Sedona's ST_Contains / ST_Within.
- */
 object SpatialJoin {
 
-  /**
-   * Pivots the long-format band records into a wide matrix.
-   *
-   * Input schema:
-   *   tile_id | lat | lon | band | value | timestamp | lulc_class
-   *
-   * Output schema:
-   *   tile_id | lat | lon | timestamp | lulc_class
-   *   | B2_Blue | B3_Green | B4_Red | B5_NIR | B6_SWIR1 | B10_TIR
-   *   | osm_density
-   */
   def pivotBands(df: DataFrame): DataFrame = {
-    // Group by the spatial key and pivot bands into columns.
     val pivoted = df
       .groupBy("tile_id", "lat", "lon", "timestamp", "lulc_class")
       .pivot("band")
       .agg(first("value"))
 
-    // Derive engineered features.
-    val withFeatures = pivoted
-      .withColumn("ndvi",
-        when(col("B5_NIR") + col("B4_Red") =!= 0,
-          (col("B5_NIR") - col("B4_Red")) / (col("B5_NIR") + col("B4_Red"))
-        ).otherwise(0.0)
-      )
-      .withColumn("ndbi",
-        when(col("B6_SWIR1") + col("B5_NIR") =!= 0,
-          (col("B6_SWIR1") - col("B5_NIR")) / (col("B6_SWIR1") + col("B5_NIR"))
-        ).otherwise(0.0)
-      )
+    val ndvi = (col("B5_NIR") - col("B4_Red")) / (col("B5_NIR") + col("B4_Red") + 1e-10)
+    val ndbi = (col("B6_SWIR1") - col("B5_NIR")) / (col("B6_SWIR1") + col("B5_NIR") + 1e-10)
 
-    withFeatures
+    pivoted
+      .withColumn("year", year(col("timestamp")))
+      .withColumn("ndvi", ndvi)
+      .withColumn("ndbi", ndbi)
   }
 
-  /**
-   * Performs a spatial join between pixel observations and polygon
-   * boundaries (e.g., zoning maps, administrative regions).
-   *
-   * TODO(production): Use Sedona for real geometry operations:
-   *   SedonaSQLRegistrator.registerAll(spark)
-   *   spark.sql("""
-   *     SELECT p.*, z.zone_type
-   *     FROM pixels p, zones z
-   *     WHERE ST_Contains(z.geometry, ST_Point(p.lon, p.lat))
-   *   """)
-   */
-  def joinWithZones(pixels: DataFrame, zones: DataFrame): DataFrame = {
-    // Placeholder: cross-join with filter for bbox containment.
-    // Replace with proper spatial index in production.
-    pixels
-      .join(zones, Seq("tile_id"), "left")
+  def loadLULC(spark: SparkSession, zoningPath: String): DataFrame = {
+    val raw = spark.read
+      .option("multiline", "true")
+      .json(zoningPath)
+
+    raw
+      .select(explode(col("features")).as("feature"))
+      .select(
+        col("feature.properties.zoning_category").as("zoning_category"),
+        to_json(col("feature.geometry")).as("geom_json")
+      )
+      .select(
+        col("zoning_category"),
+        expr("ST_GeomFromGeoJSON(geom_json)").as("geometry")
+      )
+  }
+
+  def spatialJoin(
+    pixels: DataFrame,
+    zones: DataFrame,
+    categoryCol: String,
+  ): DataFrame = {
+    pixels.createOrReplaceTempView("pixels")
+    zones.createOrReplaceTempView("zones")
+
+    val joined = pixels.sparkSession.sql(
+      s"""
+      SELECT p.*, z.$categoryCol
+      FROM pixels p, zones z
+      WHERE ST_Contains(z.geometry, ST_Point(p.lon, p.lat))
+      """
+    )
+    joined
+  }
+
+  def runPivotAndJoin(
+    spark: SparkSession,
+    inputDir: String,
+    zoningPath: String,
+    categoryCol: String,
+  ): DataFrame = {
+    val raw = spark.read.parquet(s"$inputDir/landsat/*.parquet")
+    println(s"  Long-format records loaded: ${raw.count()}")
+    raw.printSchema()
+
+    val pivoted = pivotBands(raw)
+    val numPixels = pivoted.count()
+    println(s"  Pivoted wide pixels: $numPixels")
+
+    val zones = loadLULC(spark, zoningPath)
+    val zoneCount = zones.count()
+    println(s"  LULC zones loaded: $zoneCount")
+    zones.printSchema()
+
+    val joined = spatialJoin(pivoted, zones, categoryCol)
+    val numJoined = joined.count()
+    println(s"  Spatial join result: $numJoined rows")
+    joined
   }
 }

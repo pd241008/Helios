@@ -185,10 +185,7 @@ func (p *Pool) processTask(ctx context.Context, workerID int, task Task, stats *
 	}
 
 	outPath := filepath.Join(p.outputDir, task.Kind, task.ID+".parquet")
-	if err := os.MkdirAll(filepath.Dir(outPath), 0o750); err != nil {
-		return fmt.Errorf("mkdir %s: %w", filepath.Dir(outPath), err)
-	}
-	if err := writeParquet(outPath, records); err != nil {
+	if err := parser.WriteRecords(outPath, records); err != nil {
 		return fmt.Errorf("write parquet %s: %w", outPath, err)
 	}
 
@@ -199,18 +196,6 @@ func (p *Pool) processTask(ctx context.Context, workerID int, task Task, stats *
 		"elapsed", time.Since(start).String(),
 	)
 	return nil
-}
-
-func writeParquet(path string, records []parser.Record) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	header := fmt.Sprintf("PAR1-STUB records=%d\n", len(records))
-	_, err = f.WriteString(header)
-	return err
 }
 
 // RunScenes processes scene-level tasks, downloading all band assets per scene
