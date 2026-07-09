@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/helios/ingestion/internal/config"
 	"github.com/helios/ingestion/internal/fetcher"
@@ -23,6 +24,7 @@ func main() {
 	startYear := flag.Int("start-year", 2014, "Start year for scene search")
 	endYear := flag.Int("end-year", 2023, "End year for scene search")
 	maxCloud := flag.Float64("max-cloud", 10, "Maximum cloud cover percentage")
+	fetchSplitWindow := flag.Bool("fetch-split-window", false, "Fetch TOA B10/B11 for split-window LST")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -47,22 +49,82 @@ func main() {
 		os.Exit(1)
 	}
 
-	landsatCfg := config.LandsatConfig{
-		STACURL:   *stacURL,
-		BBox:      parsedBBox,
-		StartYear: *startYear,
-		EndYear:   *endYear,
-		MaxCloud:  *maxCloud,
+	cfg := config.Config{
+		STACURL:          *stacURL,
+		BBox:             parsedBBox,
+		StartYear:        *startYear,
+		EndYear:          *endYear,
+		MaxCloud:         *maxCloud,
+		FetchSplitWindow: *fetchSplitWindow,
+		Workers:          *numWorkers,
+		RetryAttempts:    3,
+		RetryBackoff:     500 * time.Millisecond,
+		StagingDir:       absOut,
 	}
 
+	if cfg.FetchSplitWindow {
+		slog.Info("discovering split-window scenes",
+			"stac_url", cfg.STACURL,
+			"bbox", cfg.BBox,
+			"years", fmt.Sprintf("%d-%d", cfg.StartYear, cfg.EndYear),
+			"max_cloud", cfg.MaxCloud,
+			"collection_l2", cfg.CollectionL2,
+			"collection_toa", cfg.CollectionTOA,
+		)
+
+		scenes, err := fetcher.DiscoverSplitWindowScenes(ctx, cfg)
+		if err != nil {
+			slog.Error("scene discovery failed", "error", err)
+			os.Exit(1)
+		}
+
+		var sceneTasks []worker.SceneTask
+		for _, s := range scenes {
+			sceneTasks = append(sceneTasks, worker.SceneTask{
+				SceneID:    s.SceneID,
+				DateTime:   s.DateTime,
+				CloudCover: s.CloudCover,
+				WRSPath:    s.WRSPath,
+				WRSRow:     s.WRSRow,
+				BandURLs:   s.Assets,
+				K1Band10:   s.K1Band10,
+				K2Band10:   s.K2Band10,
+				K1Band11:   s.K1Band11,
+				K2Band11:   s.K2Band11,
+			})
+		}
+
+		slog.Info("starting split-window ingestion",
+			"workers", *numWorkers,
+			"scenes", len(sceneTasks),
+			"output", absOut,
+		)
+
+		pool := worker.NewPoolWithRetry(*numWorkers, absOut, cfg.RetryAttempts, cfg.RetryBackoff, logger)
+		sceneStats, err := pool.RunScenes(ctx, sceneTasks)
+		if err != nil {
+			slog.Error("ingestion failed", "error", err)
+			os.Exit(1)
+		}
+
+		slog.Info("ingestion complete",
+			"scenes_succeeded", sceneStats.ScenesSucceeded,
+			"scenes_failed", sceneStats.ScenesFailed,
+			"bands_downloaded", sceneStats.BandsDownloaded,
+			"total_bytes", sceneStats.TotalBytes,
+		)
+		return
+	}
+
+	// Legacy single-collection L2 flow.
 	slog.Info("discovering Landsat scenes",
-		"stac_url", landsatCfg.STACURL,
-		"bbox", landsatCfg.BBox,
-		"years", fmt.Sprintf("%d-%d", landsatCfg.StartYear, landsatCfg.EndYear),
-		"max_cloud", landsatCfg.MaxCloud,
+		"stac_url", cfg.STACURL,
+		"bbox", cfg.BBox,
+		"years", fmt.Sprintf("%d-%d", cfg.StartYear, cfg.EndYear),
+		"max_cloud", cfg.MaxCloud,
 	)
 
-	assets, err := fetcher.DiscoverScenes(ctx, landsatCfg)
+	assets, err := fetcher.DiscoverScenes(ctx, cfg)
 	if err != nil {
 		slog.Error("scene discovery failed", "error", err)
 		os.Exit(1)

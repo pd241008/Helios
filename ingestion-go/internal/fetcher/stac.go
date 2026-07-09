@@ -40,8 +40,14 @@ type STACFeature struct {
 }
 
 type STACProperties struct {
-	Datetime   string  `json:"datetime"`
-	CloudCover float64 `json:"eo:cloud_cover"`
+	Datetime          string  `json:"datetime"`
+	CloudCover        float64 `json:"eo:cloud_cover"`
+	WRSPath           int     `json:"landsat:wrs_path,omitempty"`
+	WRSRow            int     `json:"landsat:wrs_row,omitempty"`
+	K1ConstantBand10  float64 `json:"landsat:const1_band_10,omitempty"`
+	K2ConstantBand10  float64 `json:"landsat:const2_band_10,omitempty"`
+	K1ConstantBand11  float64 `json:"landsat:const1_band_11,omitempty"`
+	K2ConstantBand11  float64 `json:"landsat:const2_band_11,omitempty"`
 }
 
 type STACAsset struct {
