@@ -131,7 +131,7 @@ Helios/
 ---
 
 <p align="center">
-  Built with ☀️ by Prathmesh Desai
+  Built by Prathmesh Desai
 </p>
 
 <p align="center">
