@@ -15,6 +15,11 @@ lon/lat and generates:
 All outputs are city-agnostic, driven by configurable bounding box, data directory,
 and output directory.
 
+NOTE: This module always loads the full-resolution dense matrix
+(``full_resolution=True``).  Spatial sampling is ONLY applied when data.py
+is invoked from the ML training pipeline (train.py) with
+``full_resolution=False``.
+
 Usage:
     uv run python -m analysis.dataset_heatmaps \
         --data-dir ../staging/dense \
@@ -86,19 +91,22 @@ COLORS = {
 #  Data loading
 # ══════════════════════════════════════════════════════════════════
 
-def scan_dense_matrix(data_dir: str | Path) -> pl.LazyFrame:
-    return pl.scan_parquet(
-        Path(data_dir).glob("**/*.parquet"), hive_partitioning=True
-    )
+from helios_ml.data import load  # noqa: E402
 
 
 def load_data(data_dir: str | Path) -> pl.DataFrame:
-    """Load the dense matrix and basic columns needed for heatmaps."""
-    lf = scan_dense_matrix(data_dir)
+    """Load the dense matrix at full resolution for heatmap generation.
+
+    Always uses ``full_resolution=True`` so that spatial sampling is
+    NEVER applied — heatmaps need every 30m pixel for spatial detail.
+    """
+    full_df, _ = load(data_dir, full_resolution=True)
+
+    # Select and rename columns to canonical heatmap variable names.
     required = list(set(COLUMN_MAP.values()) | {"lon", "lat", "year"})
-    keep = [c for c in required if c in lf.collect_schema().names()]
-    df = lf.select(keep).collect()
-    # Map actual column names back to canonical variable names
+    keep = [c for c in required if c in full_df.columns]
+    df = full_df.select(keep)
+
     rename_map = {}
     for var, col in COLUMN_MAP.items():
         if col in df.columns:
