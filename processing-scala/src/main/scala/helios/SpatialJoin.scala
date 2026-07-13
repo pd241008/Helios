@@ -47,7 +47,7 @@ object SpatialJoin {
 
     val joined = pixels.sparkSession.sql(
       s"""
-      SELECT p.*, z.$categoryCol
+      SELECT /*+ BROADCAST(z) */ p.*, z.$categoryCol
       FROM pixels p, zones z
       WHERE ST_Contains(z.geometry, ST_Point(p.lon, p.lat))
       """
