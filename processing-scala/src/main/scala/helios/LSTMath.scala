@@ -83,11 +83,22 @@ object LSTMath {
 
     val lstCol = lst
 
+    val (bt11Col, dBTCol) = if (hasB11) {
+      val b11  = col("B11_TIR")
+      val bt11 = k2_11 / ln(k1_11 / b11 + lit(1.0))
+      (bt11, bt10 - bt11)
+    } else {
+      (lit(null, org.apache.spark.sql.types.DoubleType),
+       lit(null, org.apache.spark.sql.types.DoubleType))
+    }
+
     withMeta
       .withColumn("pv", pv)
       .withColumn("eps10", eps10)
       .withColumn("eps11", eps11)
       .withColumn("bt10", bt10)
+      .withColumn("bt11", bt11Col)
+      .withColumn("bt10_minus_bt11", dBTCol)
       .withColumn("lst", lstCol)
       .withColumn("has_thermal_split", lit(hasB11))
   }
