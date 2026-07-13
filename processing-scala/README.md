@@ -53,3 +53,87 @@ Expected output: ZSTD-compressed Parquet files under `staging/dense/`,
 partitioned as `year=<YYYY>/split=<train|test>/`. The pipeline can be
 configured via `--key value` arguments on the `runMain` command line (see
 `Config.scala` for the full list of overridable parameters).
+
+## Spark local-mode runtime tuning
+
+These notes apply when running phases 2.1–2.4 against the real
+~91M-row, ~15 GB Chennai dense matrix on a single machine.
+
+### Memory
+
+The default Spark `--driver-memory` (1 g) is far too small for the
+spatial join (~91M pixels × wide schema).  Recommended settings:
+
+```
+--conf spark.driver.memory=8g
+--conf spark.executor.memory=8g
+```
+
+On a machine with 32 GB RAM, allocate roughly 50–60 % to Spark
+(e.g. `driver + executor ≈ 16–18 g`).  If the JVM GC pauses become
+long, increase `spark.driver.memory` further or reduce partition
+counts (see below).
+
+### Shuffle partitions
+
+`spark.sql.shuffle.partitions` controls how many partitions Spark
+creates after a shuffle (groupBy, join, repartition).  The default
+of **200** is tuned for large clusters; on a single machine it
+creates too many small tasks.
+
+**Rule of thumb:** set `spark.sql.shuffle.partitions` to
+`2 × <number of physical cores>`.
+
+| Cores | Recommended partitions |
+|-------|----------------------|
+| 4     | 8                    |
+| 8     | 16                   |
+| 16    | 32                   |
+| 32    | 64                   |
+
+Example:
+
+```
+--conf spark.sql.shuffle.partitions=16
+```
+
+Adaptive query execution (`spark.sql.adaptive.enabled=true`, already
+set in `Main.scala`) will coalesce small partitions at runtime, but
+starting with a reasonable partition count avoids the overhead of
+splitting-then-merging.
+
+### Broadcast join for zoning polygons (2.1)
+
+The spatial join in `SpatialJoin.scala` joins ~91M pixel rows against
+~50–200 zoning polygons.  A full shuffle join on this mismatched pair
+is extremely wasteful — the zoning table is small enough to fit in
+driver memory many times over.
+
+The `spatialJoin` query now includes a `/*+ BROADCAST(z) */` hint
+that tells Spark to broadcast the zoning table to all executors,
+eliminating the shuffle entirely:
+
+```sql
+SELECT /*+ BROADCAST(z) */ p.*, z.zoning_category
+FROM pixels p, zones z
+WHERE ST_Contains(z.geometry, ST_Point(p.lon, p.lat))
+```
+
+If you are running a version of Spark/Sedona where the SQL hint is
+not supported, an equivalent programmatic alternative is:
+
+```scala
+import org.apache.spark.sql.functions.broadcast
+val joined = pixels.join(broadcast(zones), expr("ST_Contains(zones.geometry, ST_Point(pixels.lon, pixels.lat))"))
+```
+
+### Additional recommended flags
+
+```bash
+sbt "runMain helios.Main \
+  --conf spark.driver.memory=8g \
+  --conf spark.executor.memory=8g \
+  --conf spark.sql.shuffle.partitions=16 \
+  --conf spark.sql.adaptive.enabled=true \
+  --conf spark.sql.parquet.compression.codec=zstd"
+```
