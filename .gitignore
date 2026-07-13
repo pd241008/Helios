@@ -17,6 +17,7 @@ ml-python/helios_ml/__pycache__/
 ml-python/*.egg-info/
 ml-python/dist/
 ml-python/models/
+ml-python/reports/
 
 # ── IDE / OS ──────────────────────────────────────────────────
 .idea/
