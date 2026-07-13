@@ -62,6 +62,11 @@ object LSTMath {
     val hasB11   = withMeta.columns.contains("B11_TIR")
     val hasSTB10 = withMeta.columns.contains("ST_B10")
 
+    // The B11 fallback path is intentionally kept as a resilience mechanism
+    // for real-world tiles where B11 ingestion failed or the band was
+    // unavailable from the STAC source. When B11_TIR is absent, LST
+    // degrades to single-channel BT10 (or ST_B10 if available) rather than
+    // failing the pipeline outright.
     val lst = if (hasB11) {
       val b11   = col("B11_TIR")
       val bt11  = k2_11 / ln(k1_11 / b11 + lit(1.0))
