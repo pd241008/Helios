@@ -15,7 +15,15 @@ dependencies = [
     "typer>=0.12.0",
     "rich>=13.7.0",
     "matplotlib>=3.9.0",
+    "scipy>=1.12.0",
+    "folium>=0.16.0",
+    "plotly>=5.20.0",
 ]
+
+# NOTE: geemap and earthengine-api are required for Track A (GEE heatmaps)
+# but are left out of core deps to keep installs lean. Install if needed:
+#   uv pip install geemap earthengine-api
+# See analysis/README.md for details.
 
 # NOTE: shap is not included as a direct dependency due to a llvmlite/numba
 # version pin incompatibility with Python ≥ 3.14.  Install it manually:
