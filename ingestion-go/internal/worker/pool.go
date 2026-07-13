@@ -344,5 +344,22 @@ func (p *Pool) processScene(ctx context.Context, workerID int, scene SceneTask, 
 		"bytes", totalBytes,
 	)
 
+	// ── GeoTIFF-to-Record parsing ────────────────────────────────────
+	parsed := parser.NewGeoTIFFParser(scene.SceneID, sceneDir, scene.DateTime)
+	records, err := parsed.Records()
+	if err != nil {
+		return fmt.Errorf("parse GeoTIFFs for scene %s: %w", scene.SceneID, err)
+	}
+	if len(records) > 0 {
+		outPath := filepath.Join(p.outputDir, "landsat", scene.SceneID+".parquet")
+		if err := parser.WriteRecords(outPath, records); err != nil {
+			return fmt.Errorf("write parquet %s: %w", outPath, err)
+		}
+		p.logger.Info("parquet written",
+			"scene", scene.SceneID,
+			"records", len(records),
+		)
+	}
+
 	return nil
 }

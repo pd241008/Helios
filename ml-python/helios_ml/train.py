@@ -12,7 +12,9 @@ from the training years to avoid leakage into the held-out test years.
 Usage:
     uv run python -m helios_ml.train \
         --data-dir ../processing-scala/staging/dense \
-        --reports-dir ./reports
+        --reports-dir ./reports \
+        --sample-strategy systematic-grid \
+        --sample-rate 0.1
 """
 
 from __future__ import annotations
@@ -65,6 +67,17 @@ def train(
         0.15, "--val-fraction", help="Fraction of training years held out for validation."
     ),
     random_seed: int = typer.Option(42, "--seed", help="Random seed."),
+    # ── Spatial sampling ──────────────────────────────────────────
+    sample_strategy: str = typer.Option(
+        "none",
+        "--sample-strategy",
+        help="Spatial sampling strategy: none | systematic-grid | stratified-zoning.",
+    ),
+    sample_rate: float = typer.Option(
+        0.1,
+        "--sample-rate",
+        help="Target fraction of rows to keep (0.0–1.0) when sampling is enabled.",
+    ),
 ) -> None:
     """Train an XGBoost LST prediction model."""
     console.print("\n[bold cyan]═══ Helios ML Training Pipeline ═══[/bold cyan]\n")
@@ -74,7 +87,12 @@ def train(
 
     # ── 3.1: Data Loading ──────────────────────────────────────────
     console.print("[bold]3.1 —  Data Loading[/bold]")
-    full_df, feature_df = load(data_dir)
+    full_df, feature_df = load(
+        data_dir,
+        full_resolution=(sample_strategy == "none"),
+        sample_strategy=sample_strategy,  # type: ignore[arg-type]
+        sample_rate=sample_rate,
+    )
     console.print(f"  Features: {feature_df.shape[1]} cols\n")
 
     # ── 3.2: Temporal Split ────────────────────────────────────────
