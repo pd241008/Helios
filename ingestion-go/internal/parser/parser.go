@@ -28,9 +28,12 @@ type Record struct {
 // ParseGeoTIFF extracts pixel-level observations from a Landsat
 // GeoTIFF payload. Each pixel becomes one Record with band reflectance
 // or thermal values.
-//
-// TODO(production): Integrate with a real TIFF/GDAL reader.
+// Deprecated: This function provides synthetic/deterministic records for
+// testing only. It does not actually read the GeoTIFF payload. Use the
+// GeoTIFFParser geotiff_reader.go for real conversion.
+// Retained for generate-test-data tool and legacy ingestion flow.
 func ParseGeoTIFF(raw []byte, tileID string) ([]Record, error) {
+	// TODO(production): Remove once callers migrated.
 	if len(raw) < 8 {
 		return nil, fmt.Errorf("geotiff payload too small (%d bytes)", len(raw))
 	}

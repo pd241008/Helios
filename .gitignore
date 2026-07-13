@@ -18,7 +18,9 @@ ml-python/*.egg-info/
 ml-python/dist/
 ml-python/models/
 ml-python/reports/
-
+ml-python/analysis/__pycache__/
+ml-python/data/
+__pycache__
 # ── IDE / OS ──────────────────────────────────────────────────
 .idea/
 .vscode/
