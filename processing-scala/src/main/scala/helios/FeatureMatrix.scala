@@ -18,7 +18,7 @@ object FeatureMatrix {
 
     val extraCols = df.columns.toSet -- baseCols.toSet
     val wanted = baseCols ++ extraCols.filter(c =>
-      c.startsWith("B") || c.startsWith("ST_") || c == "pv" || c == "eps10" || c == "eps11" || c == "bt10" || c == "has_thermal_split"
+      c.startsWith("B") || c.startsWith("ST_") || c == "pv" || c == "eps10" || c == "eps11" || c == "bt10" || c == "bt11" || c == "bt10_minus_bt11" || c == "has_thermal_split"
     )
 
     val selected = df.select(wanted.map(col): _*)
