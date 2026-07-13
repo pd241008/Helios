@@ -40,7 +40,7 @@ func ParseGeoTIFF(raw []byte, tileID string) ([]Record, error) {
 	h := sha256.Sum256(raw)
 	seed := binary.LittleEndian.Uint64(h[:8])
 
-	bands := []string{"B2_Blue", "B3_Green", "B4_Red", "B5_NIR", "B6_SWIR1", "B10_TIR"}
+	bands := []string{"B2_Blue", "B3_Green", "B4_Red", "B5_NIR", "B6_SWIR1", "B10_TIR", "B11_TIR"}
 	lulcClasses := []string{
 		"urban", "forest", "cropland", "water", "barren",
 		"grassland", "wetland", "shrubland", "snow_ice",
@@ -56,6 +56,12 @@ func ParseGeoTIFF(raw []byte, tileID string) ([]Record, error) {
 
 		for bi, band := range bands {
 			val := math.Sin(float64(seed)+float64(i)*0.1+float64(bi)) * 10000
+			// B11 radiance is typically slightly lower than B10 for the same
+			// surface; apply a 0.92 multiplier to produce a non-trivial
+			// brightness-temperature difference for the split-window equation.
+			if band == "B11_TIR" {
+				val *= 0.92
+			}
 			records = append(records, Record{
 				TileID:    tileID,
 				Lat:       lat,
