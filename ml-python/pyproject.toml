@@ -2,7 +2,7 @@
 name = "helios-ml"
 version = "0.1.0"
 description = "Land Surface Temperature prediction pipeline — model training & inference"
-readme = "README.md"
+readme = "README.md"  # created by setup script
 requires-python = ">=3.12"
 license = { text = "Proprietary" }
 
@@ -14,7 +14,13 @@ dependencies = [
     "pyarrow>=17.0.0",
     "typer>=0.12.0",
     "rich>=13.7.0",
+    "matplotlib>=3.9.0",
 ]
+
+# NOTE: shap is not included as a direct dependency due to a llvmlite/numba
+# version pin incompatibility with Python ≥ 3.14.  Install it manually:
+#   uv pip install "llvmlite>=0.47.0" shap
+# The code in evaluate.py imports it lazily with a fallback message if missing.
 
 [project.optional-dependencies]
 dev = [
