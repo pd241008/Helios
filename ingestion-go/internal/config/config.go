@@ -45,13 +45,13 @@ type Config struct {
 
 func DefaultConfig() Config {
 	return Config{
-		STACURL:          "https://landsatlook.usgs.gov/stac-server",
-		BBox:             BBox{80.0, 12.8, 80.4, 13.2},
+		STACURL:          "https://planetarycomputer.microsoft.com/api/stac/v1",
+		BBox:             BBox{79.9469, 12.8, 80.345, 13.23},
 		StartYear:        2014,
 		EndYear:          2023,
 		MaxCloud:         10,
 		Bands:            []string{"B2", "B3", "B4", "B5", "B6", "B10"},
-		CollectionL2:     "landsat-8-c2-l2",
+		CollectionL2:     "landsat-c2-l2",
 		CollectionTOA:    "landsat-8-c2-l1",
 		FetchSplitWindow: false,
 		Workers:          8,
