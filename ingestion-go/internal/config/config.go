@@ -46,7 +46,7 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		STACURL:          "https://landsatlook.usgs.gov/stac-server",
-		BBox:             BBox{80.0, 12.8, 80.4, 13.2},
+		BBox:             BBox{79.9469, 12.8, 80.345, 13.23},
 		StartYear:        2014,
 		EndYear:          2023,
 		MaxCloud:         10,

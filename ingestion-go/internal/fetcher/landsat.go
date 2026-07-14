@@ -109,7 +109,7 @@ func sceneKey(f STACFeature) string {
 	if t, err := time.Parse(time.RFC3339, f.Properties.Datetime); err == nil {
 		date = t.Format("2006-01-02")
 	}
-	return fmt.Sprintf("%d/%d/%s", f.Properties.WRSPath, f.Properties.WRSRow, date)
+	return fmt.Sprintf("%d/%d/%s", int(f.Properties.WRSPath), int(f.Properties.WRSRow), date)
 }
 
 func searchCollection(ctx context.Context, client *STACClient, collection string, cfg config.Config) ([]STACFeature, error) {
@@ -170,8 +170,8 @@ func DiscoverSplitWindowScenes(ctx context.Context, cfg config.Config) ([]Scene,
 			SceneID:    toa.ID,
 			DateTime:   acqTime,
 			CloudCover: toa.Properties.CloudCover,
-			WRSPath:    toa.Properties.WRSPath,
-			WRSRow:     toa.Properties.WRSRow,
+			WRSPath:    int(toa.Properties.WRSPath),
+			WRSRow:     int(toa.Properties.WRSRow),
 			Assets:     make(map[string]string, 6),
 			K1Band10:   toa.Properties.K1ConstantBand10,
 			K2Band10:   toa.Properties.K2ConstantBand10,
