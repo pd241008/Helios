@@ -40,14 +40,39 @@ type STACFeature struct {
 }
 
 type STACProperties struct {
-	Datetime          string  `json:"datetime"`
-	CloudCover        float64 `json:"eo:cloud_cover"`
-	WRSPath           int     `json:"landsat:wrs_path,omitempty"`
-	WRSRow            int     `json:"landsat:wrs_row,omitempty"`
-	K1ConstantBand10  float64 `json:"landsat:const1_band_10,omitempty"`
-	K2ConstantBand10  float64 `json:"landsat:const2_band_10,omitempty"`
-	K1ConstantBand11  float64 `json:"landsat:const1_band_11,omitempty"`
-	K2ConstantBand11  float64 `json:"landsat:const2_band_11,omitempty"`
+	Datetime          string     `json:"datetime"`
+	CloudCover        float64    `json:"eo:cloud_cover"`
+	WRSPath           FlexInt    `json:"landsat:wrs_path,omitempty"`
+	WRSRow            FlexInt    `json:"landsat:wrs_row,omitempty"`
+	K1ConstantBand10  float64    `json:"landsat:const1_band_10,omitempty"`
+	K2ConstantBand10  float64    `json:"landsat:const2_band_10,omitempty"`
+	K1ConstantBand11  float64    `json:"landsat:const1_band_11,omitempty"`
+	K2ConstantBand11  float64    `json:"landsat:const2_band_11,omitempty"`
+}
+
+// FlexInt accepts JSON number or string token in quotes. PC returns
+// landsat:wrs_path as a string, LandsatLook returns a number.
+type FlexInt int
+
+func (f *FlexInt) UnmarshalJSON(b []byte) error {
+	if len(b) == 0 || string(b) == "null" {
+		return nil
+	}
+	// Try number first
+	if err := json.Unmarshal(b, (*int)(f)); err == nil {
+		return nil
+	}
+	// Fall back to string
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	var v int
+	if _, err := fmt.Sscanf(s, "%d", &v); err != nil {
+		return err
+	}
+	*f = FlexInt(v)
+	return nil
 }
 
 type STACAsset struct {
