@@ -166,6 +166,11 @@ func (p *GeoTIFFParser) readBand(band string) ([]Record, error) {
 		lon := gt.xOrigin + (float64(col) + 0.5) * gt.xPixelSize
 		lat := gt.yOrigin + (float64(row) + 0.5) * gt.yPixelSize
 
+		// If the TIFF is in a projected CRS (UTM), convert to WGS84.
+		if gt.utmZone > 0 {
+			lat, lon = utmToLatLon(lon, lat, gt.utmZone)
+		}
+
 		if !isFinite(lat) || !isFinite(lon) {
 			continue
 		}
@@ -247,6 +252,11 @@ func (p *GeoTIFFParser) readBandStreaming(band string, sw *ParquetStreamWriter) 
 		lon := gt.xOrigin + (float64(col) + 0.5) * gt.xPixelSize
 		lat := gt.yOrigin + (float64(row) + 0.5) * gt.yPixelSize
 
+		// If the TIFF is in a projected CRS (UTM), convert to WGS84.
+		if gt.utmZone > 0 {
+			lat, lon = utmToLatLon(lon, lat, gt.utmZone)
+		}
+
 		if !isFinite(lat) || !isFinite(lon) {
 			continue
 		}
@@ -307,6 +317,51 @@ var (
 func init() {
 	wgs84E = 2*wgs84F - wgs84F*wgs84F
 	wgs84E2 = wgs84E / (1 - wgs84E)
+}
+
+// utmToLatLon converts UTM easting/northing to WGS84 latitude/longitude.
+// zone is the UTM zone number (e.g. 44 for zone 44N).
+func utmToLatLon(easting, northing, zone float64) (lat, lon float64) {
+	const k0 = 0.9996
+	x := easting - 500000.0 // remove false easting
+	lon0 := (6.0*zone - 183.0) * math.Pi / 180.0 // central meridian in radians
+
+	// Footpoint latitude from meridional arc.
+	// A0 = 1 - e²/4 - 3e⁴/64 - 5e⁶/256 (Snyder Table 3 constant).
+	// Snyder's μ formula: μ = M / (a·A0), where M = y/k₀ on the central meridian.
+	// Combined: μ = y / (k₀·a·A0).
+	A0 := 1.0 - wgs84E/4.0 - 3.0*wgs84E*wgs84E/64.0 - 5.0*wgs84E*wgs84E*wgs84E/256.0
+	mu := northing / (wgs84A * k0 * A0)
+
+	// Modified eccentricity: e1 = (1 - sqrt(1-e^2)) / (1 + sqrt(1-e^2))
+	sqrtE := math.Sqrt(1 - wgs84E)
+	e1 := (1 - sqrtE) / (1 + sqrtE)
+
+	phi1 := mu +
+		(3*e1/2-27*e1*e1*e1/32)*math.Sin(2*mu) +
+		(21*e1*e1/16-55*e1*e1*e1*e1/32)*math.Sin(4*mu) +
+		(151*e1*e1*e1/96)*math.Sin(6*mu) +
+		(1097*e1*e1*e1*e1/512)*math.Sin(8*mu)
+
+	n1 := wgs84A / math.Sqrt(1-wgs84E*math.Sin(phi1)*math.Sin(phi1))
+	t1 := math.Tan(phi1) * math.Tan(phi1)
+	c1 := wgs84E2 * math.Cos(phi1) * math.Cos(phi1)
+	r1 := wgs84A * (1 - wgs84E) / math.Pow(1-wgs84E*math.Sin(phi1)*math.Sin(phi1), 1.5)
+	d := x / (n1 * k0)
+
+	lat = phi1 - (n1*math.Tan(phi1)/r1)*
+		(d*d/2-
+			(5+3*t1+10*c1-4*c1*c1-9*wgs84E2)*d*d*d*d/24+
+			(61+90*t1+298*c1+45*t1*t1-252*wgs84E2-3*c1*c1)*d*d*d*d*d*d/720)
+
+	lon = lon0 + (d-
+		(1+2*t1+c1)*d*d*d/6+
+		(5-2*c1+28*t1-3*c1*c1+8*wgs84E2+24*t1*t1)*d*d*d*d*d/120) /
+		math.Cos(phi1)
+
+	lat = lat * 180.0 / math.Pi
+	lon = lon * 180.0 / math.Pi
+	return
 }
 
 // --------------------------------------------------------------------------
