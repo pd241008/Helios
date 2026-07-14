@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"golang.org/x/image/tiff"
@@ -33,6 +34,8 @@ func NewGeoTIFFParser(sceneID, sceneDir string, ts time.Time) *GeoTIFFParser {
 	}
 }
 
+// Records returns all records for the scene in memory.
+// Deprecated: use WriteStreaming for scenes that exceed available heap.
 func (p *GeoTIFFParser) Records() ([]Record, error) {
 	if err := p.loadQA(); err != nil {
 		return nil, err
@@ -49,6 +52,29 @@ func (p *GeoTIFFParser) Records() ([]Record, error) {
 		records = append(records, rs...)
 	}
 	return records, nil
+}
+
+// WriteStreaming parses each band and writes records directly to the parquet
+// writer one record at a time, without accumulating them in memory. Returns
+// the total number of records written. Peak memory is ~1 TIFF image + 1
+// float64 pixel array (typically 300-400 MB), not the full Record slice
+// (which would be ~25 GB for a 252M-record scene).
+func (p *GeoTIFFParser) WriteStreaming(sw *ParquetStreamWriter) (int64, error) {
+	if err := p.loadQA(); err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, band := range p.bandNames {
+		if band == "QA_PIXEL" {
+			continue
+		}
+		n, err := p.readBandStreaming(band, sw)
+		if err != nil {
+			continue
+		}
+		total += n
+	}
+	return total, nil
 }
 
 // --------------------------------------------------------------------------
@@ -180,6 +206,109 @@ func (p *GeoTIFFParser) readBand(band string) ([]Record, error) {
 	return records, nil
 }
 
+// readBandStreaming is identical to readBand but writes each valid record
+// directly to the parquet writer instead of accumulating them. This keeps
+// peak memory at ~1 TIFF image + 1 float64 pixel array instead of the full
+// Record slice.
+func (p *GeoTIFFParser) readBandStreaming(band string, sw *ParquetStreamWriter) (int64, error) {
+	bandPath := filepath.Join(p.SceneDir, band+".tif")
+	if _, err := os.Stat(bandPath); err != nil {
+		return 0, err
+	}
+	raw, err := os.ReadFile(bandPath)
+	if err != nil {
+		return 0, err
+	}
+	img, err := tiff.Decode(bytes.NewReader(raw))
+	if err != nil {
+		return 0, fmt.Errorf("tiff decode %s: %w", bandPath, err)
+	}
+	gt := parseTIFFGeotransform(raw)
+	bounds := img.Bounds()
+	actualW := bounds.Dx()
+	actualH := bounds.Dy()
+
+	vals := extractFloats(img)
+	scale, offset := bandScaleOffset(band)
+	bandName := bandNameMapping(band)
+	ts := atomicTS(p.Timestamp)
+
+	qaw, qah := 0, 0
+	if p.qaPixels != nil {
+		qaw = p.width
+		qah = p.height
+	}
+
+	var count int64
+	for idx, v := range vals {
+		row := idx / actualW
+		col := idx % actualW
+
+		lon := gt.xOrigin + (float64(col) + 0.5) * gt.xPixelSize
+		lat := gt.yOrigin + (float64(row) + 0.5) * gt.yPixelSize
+
+		if !isFinite(lat) || !isFinite(lon) {
+			continue
+		}
+		if v == 0 || !isFinite(v) {
+			continue
+		}
+		if qaw > 0 && qah > 0 {
+			qar := row * qah / actualH
+			qac := col * qaw / actualW
+			if qar >= qah {
+				qar = qah - 1
+			}
+			if qac >= qaw {
+				qac = qaw - 1
+			}
+			if qar < 0 || qar >= len(p.qaPixels)/qaw {
+				continue
+			}
+			if !qaFilter(p.qaPixels[qar*qaw+qac]) {
+				continue
+			}
+		}
+		scaledV := v * scale + offset
+		if !isFinite(scaledV) {
+			continue
+		}
+		if err := sw.Write(Record{
+			TileID:    p.SceneID,
+			Lat:       roundTo(lat, 4),
+			Lon:       roundTo(lon, 4),
+			Band:      bandName,
+			Value:     roundTo(scaledV, 6),
+			Timestamp: ts,
+			LULCClass: p.LULCClass,
+		}); err != nil {
+			return count, fmt.Errorf("write record: %w", err)
+		}
+		count++
+	}
+	return count, nil
+}
+
+// --------------------------------------------------------------------------
+// UTM→WGS84 reprojection
+// --------------------------------------------------------------------------
+
+// WGS84 ellipsoid constants
+const (
+	wgs84A = 6378137.0           // semi-major axis
+	wgs84F = 1.0 / 298.257223563 // flattening
+)
+
+var (
+	wgs84E  float64 // first eccentricity squared
+	wgs84E2 float64 // second eccentricity squared
+)
+
+func init() {
+	wgs84E = 2*wgs84F - wgs84F*wgs84F
+	wgs84E2 = wgs84E / (1 - wgs84E)
+}
+
 // --------------------------------------------------------------------------
 // Geotransform parser
 // --------------------------------------------------------------------------
@@ -187,11 +316,13 @@ func (p *GeoTIFFParser) readBand(band string) ([]Record, error) {
 const (
 	tagModelTiePoint   = 33922
 	tagModelPixelScale = 33550
+	tagGeoAsciiParams  = 34737
 )
 
 type geotransform struct {
 	xOrigin, yOrigin      float64
 	xPixelSize, yPixelSize float64
+	utmZone                float64 // 0 = already lat/lon
 }
 
 func parseTIFFGeotransform(raw []byte) geotransform {
@@ -226,7 +357,6 @@ func parseTIFFGeotransform(raw []byte) geotransform {
 		tagID := bo.Uint16(raw[pos:])
 		// dataType := bo.Uint16(raw[pos+2:pos+4])
 		count := bo.Uint32(raw[pos+4:pos+8])
-		_ = count
 		valueOffset := bo.Uint32(raw[pos+8:pos+12])
 
 		switch tagID {
@@ -248,10 +378,37 @@ func parseTIFFGeotransform(raw []byte) geotransform {
 				pY = -pY
 			}
 			gt.yPixelSize = pY
+		case tagGeoAsciiParams:
+			off := int(valueOffset)
+			n := int(count)
+			if off >= 0 && off+n <= len(raw) {
+				s := string(raw[off : off+n])
+				gt.utmZone = parseUTMZoneFromASCII(s)
+			}
 		}
 		pos += 12
 	}
 	return gt
+}
+
+// parseUTMZoneFromASCII extracts the UTM zone number from a GeoTIFF citation
+// string like "WGS 84 / UTM zone 44N|WGS 84|\0". Returns 0 if not found.
+func parseUTMZoneFromASCII(s string) float64 {
+	const prefix = "UTM zone "
+	idx := strings.Index(s, prefix)
+	if idx < 0 {
+		return 0
+	}
+	rest := s[idx+len(prefix):]
+	var zone int
+	for _, c := range rest {
+		if c >= '0' && c <= '9' {
+			zone = zone*10 + int(c-'0')
+		} else {
+			break
+		}
+	}
+	return float64(zone)
 }
 
 // --------------------------------------------------------------------------
