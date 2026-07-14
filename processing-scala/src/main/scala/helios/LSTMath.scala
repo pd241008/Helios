@@ -42,7 +42,6 @@ object LSTMath {
       .drop("mscene_id")
 
     val ndvi  = col("ndvi")
-    val b10   = col("B10_TIR")
     val k1_10 = col("k1_constant_band_10")
     val k2_10 = col("k2_constant_band_10")
     val k1_11 = col("k1_constant_band_11")
@@ -57,17 +56,17 @@ object LSTMath {
     val eps10 = lit(cfg.emissivitySoilBand10) * (lit(1.0) - pv) + lit(cfg.emissivityVegBand10) * pv
     val eps11 = lit(cfg.emissivitySoilBand11) * (lit(1.0) - pv) + lit(cfg.emissivityVegBand11) * pv
 
-    val bt10 = k2_10 / ln(k1_10 / b10 + lit(1.0))
-
+    val hasB10   = withMeta.columns.contains("B10_TIR")
     val hasB11   = withMeta.columns.contains("B11_TIR")
     val hasSTB10 = withMeta.columns.contains("ST_B10")
 
-    // The B11 fallback path is intentionally kept as a resilience mechanism
-    // for real-world tiles where B11 ingestion failed or the band was
-    // unavailable from the STAC source. When B11_TIR is absent, LST
-    // degrades to single-channel BT10 (or ST_B10 if available) rather than
-    // failing the pipeline outright.
-    val lst = if (hasB11) {
+    // BT10 can only be computed from raw B10_TIR. If absent (PC L2 source),
+    // bt10 is a null placeholder — only ST_B10 or split-window is available.
+    val b10  = if (hasB10) col("B10_TIR") else lit(null).cast("double")
+    val bt10 = if (hasB10) k2_10 / ln(k1_10 / b10 + lit(1.0))
+               else lit(null).cast("double")
+
+    val lst = if (hasB11 && hasB10) {
       val b11   = col("B11_TIR")
       val bt11  = k2_11 / ln(k1_11 / b11 + lit(1.0))
       val dBT   = bt10 - bt11
@@ -82,19 +81,18 @@ object LSTMath {
         (lit(cfg.swA5) + lit(cfg.swA6) * lit(cfg.waterVapor)) * dEps
     } else if (hasSTB10) {
       col("ST_B10")
-    } else {
+    } else if (hasB10) {
       bt10
+    } else {
+      lit(null).cast("double")
     }
 
-    val lstCol = lst
-
-    val (bt11Col, dBTCol) = if (hasB11) {
+    val (bt11Col, dBTCol) = if (hasB11 && hasB10) {
       val b11  = col("B11_TIR")
       val bt11 = k2_11 / ln(k1_11 / b11 + lit(1.0))
       (bt11, bt10 - bt11)
     } else {
-      (lit(null, org.apache.spark.sql.types.DoubleType),
-       lit(null, org.apache.spark.sql.types.DoubleType))
+      (lit(null).cast("double"), lit(null).cast("double"))
     }
 
     withMeta
@@ -104,7 +102,7 @@ object LSTMath {
       .withColumn("bt10", bt10)
       .withColumn("bt11", bt11Col)
       .withColumn("bt10_minus_bt11", dBTCol)
-      .withColumn("lst", lstCol)
-      .withColumn("has_thermal_split", lit(hasB11))
+      .withColumn("lst", lst)
+      .withColumn("has_thermal_split", lit(hasB11 && hasB10))
   }
 }
