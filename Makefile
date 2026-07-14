@@ -49,6 +49,10 @@ ingest: $(STAGING_DIR)/raw ## Run Go ingestion worker pool
 	@echo "═══ Stage 1: Ingestion (Go) ═══"
 	cd $(GO_DIR) && go run ./cmd/ingest \
 		--output-dir $(STAGING_DIR)/raw \
+		--stac-url https://planetarycomputer.microsoft.com/api/stac/v1 \
+		--bbox 79.9469,12.8,80.345,13.23 \
+		--start-year 2023 --end-year 2023 \
+		--max-cloud 10 \
 		--workers 8
 	@echo "✓ Raw parquet files written to $(STAGING_DIR)/raw"
 
