@@ -42,8 +42,9 @@ type STACFeature struct {
 type STACProperties struct {
 	Datetime          string  `json:"datetime"`
 	CloudCover        float64 `json:"eo:cloud_cover"`
-	WRSPath           int     `json:"landsat:wrs_path,omitempty"`
-	WRSRow            int     `json:"landsat:wrs_row,omitempty"`
+	Platform          string  `json:"platform"`
+	WRSPath           json.RawMessage `json:"landsat:wrs_path,omitempty"`
+	WRSRow            json.RawMessage `json:"landsat:wrs_row,omitempty"`
 	K1ConstantBand10  float64 `json:"landsat:const1_band_10,omitempty"`
 	K2ConstantBand10  float64 `json:"landsat:const2_band_10,omitempty"`
 	K1ConstantBand11  float64 `json:"landsat:const1_band_11,omitempty"`
@@ -77,12 +78,22 @@ func NewSTACClient(baseURL string) *STACClient {
 func (s *STACClient) Search(ctx context.Context, req STACSearchRequest) ([]STACFeature, error) {
 	var features []STACFeature
 	searchURL := s.baseURL + "/search"
+	page := 0
 
 	for {
+		page++
 		resp, err := s.doSearch(ctx, searchURL, req)
 		if err != nil {
 			return nil, fmt.Errorf("stac search: %w", err)
 		}
+
+		// Log page-level details for diagnostics.
+		fmt.Printf("[stac] page %d: url=%s features=%d\n", page, searchURL, len(resp.Features))
+		if req.Filter != nil {
+			filterJSON, _ := json.Marshal(req.Filter)
+			fmt.Printf("[stac] page %d: filter=%s\n", page, string(filterJSON))
+		}
+
 		features = append(features, resp.Features...)
 
 		nextURL := ""
@@ -93,10 +104,11 @@ func (s *STACClient) Search(ctx context.Context, req STACSearchRequest) ([]STACF
 			}
 		}
 		if nextURL == "" {
+			fmt.Printf("[stac] page %d: no next link — done (total features: %d)\n", page, len(features))
 			break
 		}
+		fmt.Printf("[stac] page %d: next link present, continuing\n", page)
 		searchURL = nextURL
-		req = STACSearchRequest{}
 	}
 
 	return features, nil
