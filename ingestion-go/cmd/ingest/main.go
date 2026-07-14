@@ -21,12 +21,12 @@ import (
 func main() {
 	outputDir := flag.String("output-dir", "./staging/raw", "Directory for raw parquet output")
 	numWorkers := flag.Int("workers", 8, "Number of concurrent download workers")
-	stacURL := flag.String("stac-url", "https://landsatlook.usgs.gov/stac-server", "STAC API base URL")
-	bbox := flag.String("bbox", "80.0,12.8,80.4,13.2", "Bounding box: min_lon,min_lat,max_lon,max_lat")
+	stacURL := flag.String("stac-url", "https://planetarycomputer.microsoft.com/api/stac/v1", "STAC API base URL")
+	bbox := flag.String("bbox", "79.9469,12.8,80.345,13.23", "Bounding box: min_lon,min_lat,max_lon,max_lat")
 	startYear := flag.Int("start-year", 2014, "Start year for scene search")
 	endYear := flag.Int("end-year", 2023, "End year for scene search")
 	maxCloud := flag.Float64("max-cloud", 10, "Maximum cloud cover percentage")
-	fetchSplitWindow := flag.Bool("fetch-split-window", false, "Fetch TOA B10/B11 for split-window LST")
+	fetchSplitWindow := flag.Bool("fetch-split-window", true, "Fetch TOA B10/B11 for split-window LST")
 	lulcShapefile := flag.String("lulc-shapefile", "", "Path to .shp shapefile for LULC features")
 	lulcGeoJSON := flag.String("lulc-geojson", "", "Path to .geojson file for LULC features")
 	flag.Parse()
@@ -82,16 +82,22 @@ func main() {
 	}
 
 	if cfg.FetchSplitWindow {
+		isPC := strings.Contains(cfg.STACURL, "planetarycomputer")
 		slog.Info("discovering split-window scenes",
 			"stac_url", cfg.STACURL,
+			"provider", map[bool]string{true: "planetary-computer", false: "usgs-landsatlook"}[isPC],
 			"bbox", cfg.BBox,
 			"years", fmt.Sprintf("%d-%d", cfg.StartYear, cfg.EndYear),
 			"max_cloud", cfg.MaxCloud,
-			"collection_l2", cfg.CollectionL2,
-			"collection_toa", cfg.CollectionTOA,
 		)
 
-		scenes, err := fetcher.DiscoverSplitWindowScenes(ctx, cfg)
+		var scenes []fetcher.Scene
+		var err error
+		if isPC {
+			scenes, err = fetcher.DiscoverPCSplitWindowScenes(ctx, cfg)
+		} else {
+			scenes, err = fetcher.DiscoverSplitWindowScenes(ctx, cfg)
+		}
 		if err != nil {
 			slog.Error("scene discovery failed", "error", err)
 			os.Exit(1)

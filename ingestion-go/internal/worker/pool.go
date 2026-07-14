@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -344,22 +345,48 @@ func (p *Pool) processScene(ctx context.Context, workerID int, scene SceneTask, 
 		"bytes", totalBytes,
 	)
 
-	// ── GeoTIFF-to-Record parsing ────────────────────────────────────
+	// ── GeoTIFF-to-Record streaming parse ────────────────────────────
+	// Records are written directly to the parquet file during parsing,
+	// one record at a time. This keeps peak memory at ~1 TIFF image +
+	// 1 float64 pixel array (~300-400 MB), NOT the full Record slice
+	// (which would be ~25 GB for a 252M-record scene).
+	memBefore := readMemMB()
 	parsed := parser.NewGeoTIFFParser(scene.SceneID, sceneDir, scene.DateTime)
-	records, err := parsed.Records()
+	sw, err := parser.NewParquetStreamWriter(filepath.Join(p.outputDir, "landsat", scene.SceneID+".parquet"))
+	if err != nil {
+		return fmt.Errorf("create parquet writer for %s: %w", scene.SceneID, err)
+	}
+	count, err := parsed.WriteStreaming(sw)
+	if closeErr := sw.Close(); closeErr != nil {
+		p.logger.Error("parquet close failed", "scene", scene.SceneID, "error", closeErr)
+	}
 	if err != nil {
 		return fmt.Errorf("parse GeoTIFFs for scene %s: %w", scene.SceneID, err)
 	}
-	if len(records) > 0 {
-		outPath := filepath.Join(p.outputDir, "landsat", scene.SceneID+".parquet")
-		if err := parser.WriteRecords(outPath, records); err != nil {
-			return fmt.Errorf("write parquet %s: %w", outPath, err)
-		}
-		p.logger.Info("parquet written",
-			"scene", scene.SceneID,
-			"records", len(records),
-		)
-	}
+	memAfter := readMemMB()
+	p.logger.Info("parquet written",
+		"scene", scene.SceneID,
+		"records", count,
+		"mem_before_parse_MB", memBefore,
+		"mem_after_parse_MB", memAfter,
+		"mem_delta_MB", memAfter-memBefore,
+	)
 
 	return nil
+}
+
+// readMemMB returns the current process RSS in MB by reading /proc/self/status.
+func readMemMB() int64 {
+	data, err := os.ReadFile("/proc/self/status")
+	if err != nil {
+		return 0
+	}
+	for _, line := range bytes.Split(data, []byte("\n")) {
+		if bytes.HasPrefix(line, []byte("VmRSS:")) {
+			var kb int64
+			fmt.Sscanf(string(line), "VmRSS: %d kB", &kb)
+			return kb / 1024
+		}
+	}
+	return 0
 }
