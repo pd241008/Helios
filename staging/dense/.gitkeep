@@ -1,2 +1,0 @@
-# This directory is used by the Scala/Spark processing pipeline.
-# Dense ML-ready Parquet matrices are written here.
