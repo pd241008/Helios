@@ -22,11 +22,12 @@ func main() {
 	outputDir := flag.String("output-dir", "./staging/raw", "Directory for raw parquet output")
 	numWorkers := flag.Int("workers", 8, "Number of concurrent download workers")
 	stacURL := flag.String("stac-url", "https://landsatlook.usgs.gov/stac-server", "STAC API base URL")
-	bbox := flag.String("bbox", "80.0,12.8,80.4,13.2", "Bounding box: min_lon,min_lat,max_lon,max_lat")
+	bbox := flag.String("bbox", "79.9469,12.8000,80.3450,13.2300", "Bounding box: min_lon,min_lat,max_lon,max_lat")
 	startYear := flag.Int("start-year", 2014, "Start year for scene search")
 	endYear := flag.Int("end-year", 2023, "End year for scene search")
 	maxCloud := flag.Float64("max-cloud", 10, "Maximum cloud cover percentage")
 	fetchSplitWindow := flag.Bool("fetch-split-window", false, "Fetch TOA B10/B11 for split-window LST")
+	pcSource := flag.Bool("pc-source", false, "Use Microsoft Planetary Computer as STAC source instead of USGS LandsatLook")
 	lulcShapefile := flag.String("lulc-shapefile", "", "Path to .shp shapefile for LULC features")
 	lulcGeoJSON := flag.String("lulc-geojson", "", "Path to .geojson file for LULC features")
 	flag.Parse()
@@ -79,6 +80,61 @@ func main() {
 			slog.Error("geojson processing failed", "error", err)
 			os.Exit(1)
 		}
+	}
+
+	if *pcSource {
+		cfg.STACURL = "https://planetarycomputer.microsoft.com/api/stac/v1"
+		cfg.CollectionL2 = "landsat-c2-l2"
+
+		slog.Info("discovering Planetary Computer scenes",
+			"stac_url", cfg.STACURL,
+			"bbox", cfg.BBox,
+			"years", fmt.Sprintf("%d-%d", cfg.StartYear, cfg.EndYear),
+			"max_cloud", cfg.MaxCloud,
+		)
+
+		scenes, err := fetcher.DiscoverPCSplitWindowScenes(ctx, cfg)
+		if err != nil {
+			slog.Error("pc scene discovery failed", "error", err)
+			os.Exit(1)
+		}
+
+		var sceneTasks []worker.SceneTask
+		for _, s := range scenes {
+			sceneTasks = append(sceneTasks, worker.SceneTask{
+				SceneID:    s.SceneID,
+				DateTime:   s.DateTime,
+				CloudCover: s.CloudCover,
+				WRSPath:    s.WRSPath,
+				WRSRow:     s.WRSRow,
+				BandURLs:   s.Assets,
+				K1Band10:   s.K1Band10,
+				K2Band10:   s.K2Band10,
+				K1Band11:   s.K1Band11,
+				K2Band11:   s.K2Band11,
+			})
+		}
+
+		slog.Info("starting pc ingestion",
+			"workers", *numWorkers,
+			"scenes", len(sceneTasks),
+			"output", absOut,
+		)
+
+		pool := worker.NewPoolWithRetry(*numWorkers, absOut, cfg.RetryAttempts, cfg.RetryBackoff, logger)
+		sceneStats, err := pool.RunScenes(ctx, sceneTasks)
+		if err != nil {
+			slog.Error("ingestion failed", "error", err)
+			os.Exit(1)
+		}
+
+		slog.Info("ingestion complete",
+			"scenes_succeeded", sceneStats.ScenesSucceeded,
+			"scenes_failed", sceneStats.ScenesFailed,
+			"bands_downloaded", sceneStats.BandsDownloaded,
+			"total_bytes", sceneStats.TotalBytes,
+		)
+		return
 	}
 
 	if cfg.FetchSplitWindow {
