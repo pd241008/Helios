@@ -200,8 +200,8 @@ func DiscoverPCSplitWindowScenes(ctx context.Context, cfg config.Config) ([]Scen
 			SceneID:    f.ID,
 			DateTime:   acqTime,
 			CloudCover: f.Properties.CloudCover,
-			WRSPath:    parseRawInt(f.Properties.WRSPath),
-			WRSRow:     parseRawInt(f.Properties.WRSRow),
+			WRSPath:    int(f.Properties.WRSPath),
+			WRSRow:     int(f.Properties.WRSRow),
 			Assets:     make(map[string]string, 8),
 		}
 
@@ -329,16 +329,4 @@ func PCFallbackScene() Scene {
 func IsPCURL(url string) bool {
 	return strings.Contains(url, "planetarycomputer.microsoft.com") ||
 		strings.Contains(url, "landsateuwest.blob.core.windows.net")
-}
-
-// parseRawInt extracts an integer from a json.RawMessage that may be a JSON
-// number or a JSON string containing a number (e.g., "142" from PC STAC).
-func parseRawInt(raw json.RawMessage) int {
-	if len(raw) == 0 {
-		return 0
-	}
-	s := strings.Trim(string(raw), `"`)
-	var v int
-	fmt.Sscanf(s, "%d", &v)
-	return v
 }
