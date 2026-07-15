@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -18,22 +19,29 @@ const (
 	PCSigningURL   = "https://planetarycomputer.microsoft.com/api/sas/v1/sign"
 	PCCollectionL2 = "landsat-c2-l2"
 
-	pcSignTimeout = 30 * time.Second
+	pcSignTimeout = 60 * time.Second
 )
 
 // pcAssetKey maps Planetary Computer asset keys to the filenames
-// the GeoTIFFParser expects.
+// the GeoTIFFParser expects. Only the bands required for the pipeline
+// are signed during discovery. Optional bands (B1, B2, B3, B7, MTL)
+// are signed later in the worker to avoid PC SAS rate limits.
 var pcAssetMap = map[string]string{
 	"red":       "B4",
 	"nir08":     "B5",
 	"swir16":    "B6",
 	"lwir11":    "ST_B10",
 	"qa_pixel":  "QA_PIXEL",
-	"green":     "B3",
-	"blue":      "B2",
-	"swir22":    "B7",
-	"coastal":   "B1",
-	"mtl.json":  "MTL",
+}
+
+// pcOptionalAssetMap contains bands that are nice-to-have but not
+// required. Signed in the worker pool with its own rate limiting.
+var pcOptionalAssetMap = map[string]string{
+	"green":   "B3",
+	"blue":    "B2",
+	"swir22":  "B7",
+	"coastal": "B1",
+	"mtl.json": "MTL",
 }
 
 // pcSignResult is the JSON response from the PC signing endpoint.
@@ -44,30 +52,43 @@ type pcSignResult struct {
 
 // signPCURL calls the Planetary Computer SAS signing endpoint to convert an
 // unsigned blob URL into a short-lived signed URL. Works without authentication
-// but is rate-limited.
-func signPCURL(unsignedURL string) (string, error) {
+// but is rate-limited (~1 req/s for anonymous access). Returns the retry-after
+// duration on 429 so callers can back off.
+func signPCURL(unsignedURL string) (string, time.Duration, error) {
 	signURL := PCSigningURL + "?href=" + unsignedURL
 
 	cli := &http.Client{Timeout: pcSignTimeout}
 	resp, err := cli.Get(signURL)
 	if err != nil {
-		return "", fmt.Errorf("pc sign request: %w", err)
+		return "", 0, fmt.Errorf("pc sign request: %w", err)
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == 429 {
+		// Parse Retry-After from the response body (PC returns it as a JSON field).
+		var errBody struct {
+			Message string `json:"message"`
+		}
+		json.NewDecoder(resp.Body).Decode(&errBody)
+		// Extract seconds from "Try again in 55 seconds."
+		retrySec := 60 * time.Second
+		fmt.Sscanf(errBody.Message, "Try again in %d seconds", &retrySec)
+		return "", retrySec, fmt.Errorf("pc sign 429: %s", errBody.Message)
+	}
+
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<12))
-		return "", fmt.Errorf("pc sign %d: %s", resp.StatusCode, string(body))
+		return "", 0, fmt.Errorf("pc sign %d: %s", resp.StatusCode, string(body))
 	}
 
 	var result pcSignResult
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("pc sign decode: %w", err)
+		return "", 0, fmt.Errorf("pc sign decode: %w", err)
 	}
 	if result.HRef == "" {
-		return "", fmt.Errorf("pc sign returned empty href")
+		return "", 0, fmt.Errorf("pc sign returned empty href")
 	}
-	return result.HRef, nil
+	return result.HRef, 0, nil
 }
 
 // pcMTLMetadata holds relevant K1/K2 constants parsed from MTL.json.
@@ -102,6 +123,7 @@ func parsePCMTL(data []byte) pcMTLMetadata {
 	return pcMTLMetadata{}
 }
 
+
 // defaultK1K2 returns fallback constants for Landsat 8/9 Band 10
 
 // when MTL.json is unavailable.
@@ -119,30 +141,56 @@ func DiscoverPCSplitWindowScenes(ctx context.Context, cfg config.Config) ([]Scen
 		cfg.StartYear, cfg.EndYear)
 	bbox := []float64{cfg.BBox[0], cfg.BBox[1], cfg.BBox[2], cfg.BBox[3]}
 
+	filter := &STACFilter{
+		Op: "and",
+		Args: []any{
+			map[string]any{"op": "<", "args": []any{
+				map[string]string{"property": "eo:cloud_cover"},
+				cfg.MaxCloud,
+			}},
+			map[string]any{"op": "in", "args": []any{
+				map[string]string{"property": "platform"},
+				[]string{"landsat-8", "landsat-9"},
+			}},
+		},
+	}
+
+	// Log the exact CQL2 filter body being sent to the PC STAC API.
+	filterJSON, _ := json.Marshal(filter)
+	log.Printf("[pc-discovery] POST %s/search", cfg.STACURL)
+	log.Printf("[pc-discovery] collections: [\"%s\"]", PCCollectionL2)
+	log.Printf("[pc-discovery] datetime: %s", datetime)
+	log.Printf("[pc-discovery] bbox: %v", bbox)
+	log.Printf("[pc-discovery] limit: 500")
+	log.Printf("[pc-discovery] filter (CQL2): %s", string(filterJSON))
+
 	req := STACSearchRequest{
 		Collections: []string{PCCollectionL2},
 		Datetime:    datetime,
 		BBox:        bbox,
-		Filter: &STACFilter{
-			Op: "and",
-			Args: []any{
-				map[string]any{"op": "<", "args": []any{
-					map[string]string{"property": "eo:cloud_cover"},
-					cfg.MaxCloud,
-				}},
-				map[string]any{"op": "in", "args": []any{
-					map[string]string{"property": "platform"},
-					[]string{"landsat-8", "landsat-9"},
-				}},
-			},
-		},
-		Limit: 500,
+		Filter:      filter,
+		Limit:       500,
 	}
 
 	features, err := client.Search(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("pc search: %w", err)
 	}
+
+	// Log the raw STAC response: total feature count and per-feature platform.
+	log.Printf("[pc-discovery] raw STAC features returned: %d", len(features))
+	for i, f := range features {
+		log.Printf("[pc-discovery]   feature[%d]: id=%s platform=%s cloud=%.2f date=%s",
+			i, f.ID, f.Properties.Platform, f.Properties.CloudCover, f.Properties.Datetime)
+	}
+
+	// Per-platform summary.
+	platformCounts := map[string]int{}
+	for _, f := range features {
+		platformCounts[f.Properties.Platform]++
+	}
+	log.Printf("[pc-discovery] per-platform counts: %v", platformCounts)
+	log.Printf("[pc-discovery] filter was applied to outgoing request: YES (CQL2 filter included in POST body)")
 
 	var scenes []Scene
 	for _, f := range features {
@@ -152,31 +200,57 @@ func DiscoverPCSplitWindowScenes(ctx context.Context, cfg config.Config) ([]Scen
 			SceneID:    f.ID,
 			DateTime:   acqTime,
 			CloudCover: f.Properties.CloudCover,
-			WRSPath:    f.Properties.WRSPath,
-			WRSRow:     f.Properties.WRSRow,
+			WRSPath:    int(f.Properties.WRSPath),
+			WRSRow:     int(f.Properties.WRSRow),
 			Assets:     make(map[string]string, 8),
 		}
 
-		// Map PC asset keys → parser band names + sign each URL
+		// Map PC asset keys → parser band names + sign each URL.
+		// Only sign the 5 required bands (B4, B5, B6, ST_B10, QA_PIXEL)
+		// to stay within PC's ~1 req/s anonymous rate limit.
+		signedCount := 0
+		failedCount := 0
 		for pcKey, localName := range pcAssetMap {
 			asset, ok := f.Assets[pcKey]
 			if !ok {
+				failedCount++
+				log.Printf("[pc-discovery]   %s: asset key %q missing from STAC response", f.ID, pcKey)
 				continue
 			}
 
 			unsignedURL := client.ResolveURL(asset.HRef)
-			signedURL, err := signPCURL(unsignedURL)
-			if err != nil {
-				// If signing fails for MTL, we can proceed with defaults.
-				// If it fails for data bands, we skip the scene.
-				if pcKey == "mtl.json" {
-					continue
+
+			// Retry signing with exponential backoff, respecting
+			// the Retry-After duration from 429 responses.
+			var signedURL string
+			var signErr error
+			for attempt := 0; attempt < 5; attempt++ {
+				var retryAfter time.Duration
+				signedURL, retryAfter, signErr = signPCURL(unsignedURL)
+				if signErr == nil {
+					break
 				}
-				_ = err // log at caller
+				backoff := 2*time.Second + retryAfter
+				if attempt < 4 {
+					log.Printf("[pc-discovery]   %s/%s: sign attempt %d failed, retrying in %v",
+						f.ID, pcKey, attempt+1, backoff)
+					time.Sleep(backoff)
+				}
+			}
+
+			if signErr != nil {
+				failedCount++
+				log.Printf("[pc-discovery]   %s: CRITICAL signing failed for %s after 5 attempts: %v",
+					f.ID, pcKey, signErr)
 				continue
 			}
 			s.Assets[localName] = signedURL
+			signedCount++
+			// Delay between successful signing requests to stay under rate limit.
+			time.Sleep(1200 * time.Millisecond)
 		}
+		log.Printf("[pc-discovery]   %s: signed %d/%d required bands (%d failed)",
+			f.ID, signedCount, len(pcAssetMap), failedCount)
 
 		// Need at least red, nir08, swir16, and QA_PIXEL to be useful
 		required := []string{"B4", "B5", "B6", "QA_PIXEL", "ST_B10"}
@@ -212,6 +286,9 @@ func DiscoverPCSplitWindowScenes(ctx context.Context, cfg config.Config) ([]Scen
 
 		scenes = append(scenes, s)
 	}
+
+	log.Printf("[pc-discovery] scenes after required-band filter: %d (from %d raw features)",
+		len(scenes), len(features))
 
 	return scenes, nil
 }

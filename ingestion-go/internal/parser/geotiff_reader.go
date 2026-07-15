@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"golang.org/x/image/tiff"
@@ -29,20 +30,45 @@ func NewGeoTIFFParser(sceneID, sceneDir string, ts time.Time) *GeoTIFFParser {
 		SceneID:   sceneID,
 		SceneDir:  sceneDir,
 		Timestamp: ts,
-		bandNames: []string{"B2", "B3", "B4", "B5", "B6", "B7", "ST_B10", "QA_PIXEL"},
+		bandNames: []string{"B4", "B5", "B6", "B10", "B11", "ST_B10", "QA_PIXEL"},
 	}
 }
 
-func (p *GeoTIFFParser) Records(pw *ParquetStreamWriter) (int64, error) {
-	total := int64(0)
+// Records returns all records for the scene in memory.
+// Deprecated: use WriteStreaming for scenes that exceed available heap.
+func (p *GeoTIFFParser) Records() ([]Record, error) {
 	if err := p.loadQA(); err != nil {
-		return 0, err
+		return nil, err
 	}
+	var records []Record
 	for _, band := range p.bandNames {
 		if band == "QA_PIXEL" {
 			continue
 		}
-		n, err := p.writeBand(pw, band)
+		rs, err := p.readBand(band)
+		if err != nil {
+			continue
+		}
+		records = append(records, rs...)
+	}
+	return records, nil
+}
+
+// WriteStreaming parses each band and writes records directly to the parquet
+// writer one record at a time, without accumulating them in memory. Returns
+// the total number of records written. Peak memory is ~1 TIFF image + 1
+// float64 pixel array (typically 300-400 MB), not the full Record slice
+// (which would be ~25 GB for a 252M-record scene).
+func (p *GeoTIFFParser) WriteStreaming(sw *ParquetStreamWriter) (int64, error) {
+	if err := p.loadQA(); err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, band := range p.bandNames {
+		if band == "QA_PIXEL" {
+			continue
+		}
+		n, err := p.readBandStreaming(band, sw)
 		if err != nil {
 			continue
 		}
@@ -50,6 +76,10 @@ func (p *GeoTIFFParser) Records(pw *ParquetStreamWriter) (int64, error) {
 	}
 	return total, nil
 }
+
+// --------------------------------------------------------------------------
+// QA_PIXEL
+// --------------------------------------------------------------------------
 
 func (p *GeoTIFFParser) loadQA() error {
 	qaPath := filepath.Join(p.SceneDir, "QA_PIXEL.tif")
@@ -95,27 +125,29 @@ func qaFilter(qa int32) bool {
 	return qa >= 0 && (qa&0b11111) == 0
 }
 
-func (p *GeoTIFFParser) writeBand(pw *ParquetStreamWriter, band string) (int64, error) {
+// --------------------------------------------------------------------------
+// Band reading
+// --------------------------------------------------------------------------
+
+func (p *GeoTIFFParser) readBand(band string) ([]Record, error) {
 	bandPath := filepath.Join(p.SceneDir, band+".tif")
 	if _, err := os.Stat(bandPath); err != nil {
-		return 0, err
+		return nil, err
 	}
 	raw, err := os.ReadFile(bandPath)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-
-	gt := parseTIFFGeotransform(raw)
-	epsg := p.parseEPSG(raw)
-
 	img, err := tiff.Decode(bytes.NewReader(raw))
 	if err != nil {
-		return 0, fmt.Errorf("tiff decode %s: %w", bandPath, err)
+		return nil, fmt.Errorf("tiff decode %s: %w", bandPath, err)
 	}
+	gt := parseTIFFGeotransform(raw)
 	bounds := img.Bounds()
 	actualW := bounds.Dx()
 	actualH := bounds.Dy()
 
+	vals := extractFloats(img)
 	scale, offset := bandScaleOffset(band)
 	bandName := bandNameMapping(band)
 	ts := atomicTS(p.Timestamp)
@@ -126,243 +158,226 @@ func (p *GeoTIFFParser) writeBand(pw *ParquetStreamWriter, band string) (int64, 
 		qah = p.height
 	}
 
-	var n int64
-	for y := 0; y < actualH; y++ {
-		for x := 0; x < actualW; x++ {
-			v := pixelAt(img, x, y)
-			if v == 0 || !isFinite(v) {
+	records := make([]Record, 0, len(vals))
+	for idx, v := range vals {
+		row := idx / actualW
+		col := idx % actualW
+
+		lon := gt.xOrigin + (float64(col) + 0.5) * gt.xPixelSize
+		lat := gt.yOrigin + (float64(row) + 0.5) * gt.yPixelSize
+
+		// If the TIFF is in a projected CRS (UTM), convert to WGS84.
+		if gt.utmZone > 0 {
+			lat, lon = utmToLatLon(lon, lat, gt.utmZone)
+		}
+
+		if !isFinite(lat) || !isFinite(lon) {
+			continue
+		}
+		if v == 0 || !isFinite(v) {
+			continue
+		}
+		// QA filter with resolution matching
+		if qaw > 0 && qah > 0 {
+			qar := row * qah / actualH
+			qac := col * qaw / actualW
+			if qar >= qah {
+				qar = qah - 1
+			}
+			if qac >= qaw {
+				qac = qaw - 1
+			}
+			if qar < 0 || qar >= len(p.qaPixels) / qaw {
 				continue
 			}
-			_ = qaw
-			if qaw > 0 && qah > 0 {
-				qar := y * qah / actualH
-				qac := x * qaw / actualW
-				if qar >= qah {
-					qar = qah - 1
-				}
-				if qac >= qaw {
-					qac = qaw - 1
-				}
-				if qar < 0 || qar >= len(p.qaPixels)/qaw {
-					continue
-				}
-				if !qaFilter(p.qaPixels[qar*qaw+qac]) {
-					continue
-				}
-			}
-
-			px := gt.xOrigin + (float64(x)+0.5)*gt.xPixelSize
-			py := gt.yOrigin + (float64(y)+0.5)*gt.yPixelSize
-
-			lon, lat := reproject(epsg, 0, px, py)
-
-			if !isFinite(lat) || !isFinite(lon) {
+			if !qaFilter(p.qaPixels[qar*qaw+qac]) {
 				continue
 			}
+		}
+		scaledV := v * scale + offset
+		if !isFinite(scaledV) {
+			continue
+		}
+		records = append(records, Record{
+			TileID:    p.SceneID,
+			Lat:       roundTo(lat, 4),
+			Lon:       roundTo(lon, 4),
+			Band:      bandName,
+			Value:     roundTo(scaledV, 6),
+			Timestamp: ts,
+			LULCClass: p.LULCClass,
+		})
+	}
+	return records, nil
+}
 
-			scaledV := v*scale + offset
-			if !isFinite(scaledV) {
+// readBandStreaming is identical to readBand but writes each valid record
+// directly to the parquet writer instead of accumulating them. This keeps
+// peak memory at ~1 TIFF image + 1 float64 pixel array instead of the full
+// Record slice.
+func (p *GeoTIFFParser) readBandStreaming(band string, sw *ParquetStreamWriter) (int64, error) {
+	bandPath := filepath.Join(p.SceneDir, band+".tif")
+	if _, err := os.Stat(bandPath); err != nil {
+		return 0, err
+	}
+	raw, err := os.ReadFile(bandPath)
+	if err != nil {
+		return 0, err
+	}
+	img, err := tiff.Decode(bytes.NewReader(raw))
+	if err != nil {
+		return 0, fmt.Errorf("tiff decode %s: %w", bandPath, err)
+	}
+	gt := parseTIFFGeotransform(raw)
+	bounds := img.Bounds()
+	actualW := bounds.Dx()
+	actualH := bounds.Dy()
+
+	vals := extractFloats(img)
+	scale, offset := bandScaleOffset(band)
+	bandName := bandNameMapping(band)
+	ts := atomicTS(p.Timestamp)
+
+	qaw, qah := 0, 0
+	if p.qaPixels != nil {
+		qaw = p.width
+		qah = p.height
+	}
+
+	var count int64
+	for idx, v := range vals {
+		row := idx / actualW
+		col := idx % actualW
+
+		lon := gt.xOrigin + (float64(col) + 0.5) * gt.xPixelSize
+		lat := gt.yOrigin + (float64(row) + 0.5) * gt.yPixelSize
+
+		// If the TIFF is in a projected CRS (UTM), convert to WGS84.
+		if gt.utmZone > 0 {
+			lat, lon = utmToLatLon(lon, lat, gt.utmZone)
+		}
+
+		if !isFinite(lat) || !isFinite(lon) {
+			continue
+		}
+		if v == 0 || !isFinite(v) {
+			continue
+		}
+		if qaw > 0 && qah > 0 {
+			qar := row * qah / actualH
+			qac := col * qaw / actualW
+			if qar >= qah {
+				qar = qah - 1
+			}
+			if qac >= qaw {
+				qac = qaw - 1
+			}
+			if qar < 0 || qar >= len(p.qaPixels)/qaw {
 				continue
 			}
-			if err := pw.Write(Record{
-				TileID:    p.SceneID,
-				Lat:       roundTo(lat, 6),
-				Lon:       roundTo(lon, 6),
-				Band:      bandName,
-				Value:     roundTo(scaledV, 6),
-				Timestamp: ts,
-				LULCClass: p.LULCClass,
-			}); err != nil {
-				return n, fmt.Errorf("write record: %w", err)
-			}
-			n++
-		}
-	}
-	return n, nil
-}
-
-func pixelAt(img image.Image, x, y int) float64 {
-	switch i := img.(type) {
-	case *image.Gray:
-		return float64(i.Pix[y*i.Stride+x])
-	case *image.Gray16:
-		off := y*i.Stride + x*2
-		return float64(uint16(i.Pix[off])<<8 | uint16(i.Pix[off+1]))
-	case *image.NRGBA:
-		off := y*i.Stride + x*4
-		return float64(i.Pix[off])
-	case *image.RGBA:
-		off := y*i.Stride + x*4
-		return float64(i.Pix[off])
-	default:
-		r, _, _, _ := i.At(x, y).RGBA()
-		return float64(r)
-	}
-}
-
-// parseEPSG reads the ProjectedCSTypeGeoKey (ID 3072) from the
-// GeoKeyDirectoryTag (34735) to determine the EPSG code.
-func (p *GeoTIFFParser) parseEPSG(raw []byte) int {
-	if len(raw) < 8 {
-		return 0
-	}
-	bo := byteOrder(raw)
-	if bo == nil {
-		return 0
-	}
-	ifdOff := int(bo.Uint32(raw[4:8]))
-	if ifdOff <= 0 || ifdOff >= len(raw) {
-		return 0
-	}
-	numTags := bo.Uint16(raw[ifdOff:])
-	pos := ifdOff + 2
-
-	for i := 0; i < int(numTags); i++ {
-		if pos+12 > len(raw) {
-			break
-		}
-		tagID := bo.Uint16(raw[pos:])
-		dtype := bo.Uint16(raw[pos+2:])
-		count := bo.Uint32(raw[pos+4:])
-		valOff := bo.Uint32(raw[pos+8:])
-
-		if tagID == 34735 {
-			keyDirOff := int(valOff)
-			if keyDirOff < 0 || keyDirOff+8 > len(raw) {
-				return 0
-			}
-			sz := int(dtSize(dtype)) * int(count)
-			if keyDirOff+sz > len(raw) {
-				return 0
-			}
-			numKeys := bo.Uint16(raw[keyDirOff+6:])
-			for j := 0; j < int(numKeys); j++ {
-				entryOff := keyDirOff + 8 + j*8
-				if entryOff+8 > len(raw) {
-					break
-				}
-				kid := bo.Uint16(raw[entryOff:])
-				// tiffLoc := bo.Uint16(raw[entryOff+2:])
-				// cntIdx := bo.Uint16(raw[entryOff+4:])
-				valOrOff := bo.Uint16(raw[entryOff+6:])
-				if kid == 3072 {
-					return int(valOrOff)
-				}
+			if !qaFilter(p.qaPixels[qar*qaw+qac]) {
+				continue
 			}
 		}
-		pos += 12
+		scaledV := v * scale + offset
+		if !isFinite(scaledV) {
+			continue
+		}
+		if err := sw.Write(Record{
+			TileID:    p.SceneID,
+			Lat:       roundTo(lat, 4),
+			Lon:       roundTo(lon, 4),
+			Band:      bandName,
+			Value:     roundTo(scaledV, 6),
+			Timestamp: ts,
+			LULCClass: p.LULCClass,
+		}); err != nil {
+			return count, fmt.Errorf("write record: %w", err)
+		}
+		count++
 	}
-	return 0
+	return count, nil
 }
 
-func byteOrder(raw []byte) binary.ByteOrder {
-	if raw[0] == 0x4D && raw[1] == 0x4D {
-		return binary.BigEndian
-	}
-	if raw[0] == 0x49 && raw[1] == 0x49 {
-		return binary.LittleEndian
-	}
-	return nil
+// --------------------------------------------------------------------------
+// UTM→WGS84 reprojection
+// --------------------------------------------------------------------------
+
+// WGS84 ellipsoid constants
+const (
+	wgs84A = 6378137.0           // semi-major axis
+	wgs84F = 1.0 / 298.257223563 // flattening
+)
+
+var (
+	wgs84E  float64 // first eccentricity squared
+	wgs84E2 float64 // second eccentricity squared
+)
+
+func init() {
+	wgs84E = 2*wgs84F - wgs84F*wgs84F
+	wgs84E2 = wgs84E / (1 - wgs84E)
 }
 
-func dtSize(dt uint16) uint32 {
-	switch dt {
-	case 1, 2, 6, 7:
-		return 1
-	case 3, 8:
-		return 2
-	case 4, 9, 11:
-		return 4
-	case 5, 10, 12:
-		return 8
-	default:
-		return 1
-	}
-}
+// utmToLatLon converts UTM easting/northing to WGS84 latitude/longitude.
+// zone is the UTM zone number (e.g. 44 for zone 44N).
+func utmToLatLon(easting, northing, zone float64) (lat, lon float64) {
+	const k0 = 0.9996
+	x := easting - 500000.0 // remove false easting
+	lon0 := (6.0*zone - 183.0) * math.Pi / 180.0 // central meridian in radians
 
-// reproject converts (px, py) from the source CRS to WGS84 lon/lat.
-// Currently handles EPSG:326XX (UTM north) and EPSG:327XX (UTM south).
-// Returns (px, py) unchanged for geographic CRS or unknown EPSG codes.
-func reproject(epsg int, _, px, py float64) (lon, lat float64) {
-	if epsg == 0 {
-		return px, py
-	}
+	// Footpoint latitude from meridional arc.
+	// A0 = 1 - e²/4 - 3e⁴/64 - 5e⁶/256 (Snyder Table 3 constant).
+	// Snyder's μ formula: μ = M / (a·A0), where M = y/k₀ on the central meridian.
+	// Combined: μ = y / (k₀·a·A0).
+	A0 := 1.0 - wgs84E/4.0 - 3.0*wgs84E*wgs84E/64.0 - 5.0*wgs84E*wgs84E*wgs84E/256.0
+	mu := northing / (wgs84A * k0 * A0)
 
-	zone := 0
-	hemiNorth := true
-	if epsg >= 32601 && epsg <= 32660 {
-		zone = epsg - 32600
-		hemiNorth = true
-	} else if epsg >= 32701 && epsg <= 32760 {
-		zone = epsg - 32700
-		hemiNorth = false
-	} else {
-		return px, py
-	}
+	// Modified eccentricity: e1 = (1 - sqrt(1-e^2)) / (1 + sqrt(1-e^2))
+	sqrtE := math.Sqrt(1 - wgs84E)
+	e1 := (1 - sqrtE) / (1 + sqrtE)
 
-	lon0 := float64(zone)*6.0 - 183.0
-	lat, lon = utmToWGS84(px, py, lon0, hemiNorth)
-	return lon, lat
-}
-
-// utmToWGS84 converts UTM easting/northing to WGS84 latitude/longitude
-// using transverse Mercator (EPSG 9807) with WGS84 ellipsoid.
-func utmToWGS84(easting, northing, lon0Deg float64, north bool) (latDeg, lonDeg float64) {
-	// WGS84 ellipsoid
-	a := 6378137.0
-	f := 1.0 / 298.257223563
-	e2 := 2*f - f*f
-	e4 := e2 * e2
-	e6 := e4 * e2
-
-	k0 := 0.9996
-	fe := 500000.0
-	fn := 0.0
-	if !north {
-		fn = 10000000.0
-	}
-
-	lon0 := lon0Deg * math.Pi / 180.0
-
-	x := easting - fe
-	y := northing - fn
-
-	m := y / k0
-	mu := m / (a * (1 - e2/4 - 3*e4/64 - 5*e6/256))
-
-	e1 := (1 - math.Sqrt(1-e2)) / (1 + math.Sqrt(1-e2))
 	phi1 := mu +
 		(3*e1/2-27*e1*e1*e1/32)*math.Sin(2*mu) +
 		(21*e1*e1/16-55*e1*e1*e1*e1/32)*math.Sin(4*mu) +
-		(151*e1*e1*e1/96)*math.Sin(6*mu)
+		(151*e1*e1*e1/96)*math.Sin(6*mu) +
+		(1097*e1*e1*e1*e1/512)*math.Sin(8*mu)
 
-	t1 := math.Tan(phi1)
-	t12 := t1 * t1
-	c1 := e2 / (1 - e2) * math.Cos(phi1) * math.Cos(phi1)
-	r1 := a * (1 - e2) / math.Pow(1-e2*math.Sin(phi1)*math.Sin(phi1), 1.5)
-	n1 := a / math.Sqrt(1-e2*math.Sin(phi1)*math.Sin(phi1))
+	n1 := wgs84A / math.Sqrt(1-wgs84E*math.Sin(phi1)*math.Sin(phi1))
+	t1 := math.Tan(phi1) * math.Tan(phi1)
+	c1 := wgs84E2 * math.Cos(phi1) * math.Cos(phi1)
+	r1 := wgs84A * (1 - wgs84E) / math.Pow(1-wgs84E*math.Sin(phi1)*math.Sin(phi1), 1.5)
 	d := x / (n1 * k0)
 
-	lat := phi1 -
-		n1*t1/r1*(d*d/2-
-			(5+3*t12+10*c1-4*c1*c1-9*e2)*d*d*d*d/24+
-			(61+90*t12+298*c1+45*t12*t12-252*e2-3*c1*c1)*d*d*d*d*d*d/720)
-	lon := lon0 +
-		(d-
-			(1+2*t12+c1)*d*d*d/6+
-			(5-2*c1+28*t12-3*c1*c1+8*e2+24*t12*t12)*d*d*d*d*d/120) / math.Cos(phi1)
+	lat = phi1 - (n1*math.Tan(phi1)/r1)*
+		(d*d/2-
+			(5+3*t1+10*c1-4*c1*c1-9*wgs84E2)*d*d*d*d/24+
+			(61+90*t1+298*c1+45*t1*t1-252*wgs84E2-3*c1*c1)*d*d*d*d*d*d/720)
 
-	return lat * 180.0 / math.Pi, lon * 180.0 / math.Pi
+	lon = lon0 + (d-
+		(1+2*t1+c1)*d*d*d/6+
+		(5-2*c1+28*t1-3*c1*c1+8*wgs84E2+24*t1*t1)*d*d*d*d*d/120) /
+		math.Cos(phi1)
+
+	lat = lat * 180.0 / math.Pi
+	lon = lon * 180.0 / math.Pi
+	return
 }
+
+// --------------------------------------------------------------------------
+// Geotransform parser
+// --------------------------------------------------------------------------
 
 const (
 	tagModelTiePoint   = 33922
 	tagModelPixelScale = 33550
+	tagGeoAsciiParams  = 34737
 )
 
 type geotransform struct {
 	xOrigin, yOrigin      float64
 	xPixelSize, yPixelSize float64
+	utmZone                float64 // 0 = already lat/lon
 }
 
 func parseTIFFGeotransform(raw []byte) geotransform {
@@ -373,8 +388,11 @@ func parseTIFFGeotransform(raw []byte) geotransform {
 	if len(raw) < 8 {
 		return gt
 	}
-	bo := byteOrder(raw)
-	if bo == nil {
+	var bo binary.ByteOrder
+	bo = binary.LittleEndian
+	if raw[0] == 0x4D && raw[1] == 0x4D {
+		bo = binary.BigEndian
+	} else if raw[0] != 0x49 || raw[1] != 0x49 {
 		return gt
 	}
 	magic := bo.Uint16(raw[2:4])
@@ -392,8 +410,8 @@ func parseTIFFGeotransform(raw []byte) geotransform {
 			break
 		}
 		tagID := bo.Uint16(raw[pos:])
+		// dataType := bo.Uint16(raw[pos+2:pos+4])
 		count := bo.Uint32(raw[pos+4:pos+8])
-		_ = count
 		valueOffset := bo.Uint32(raw[pos+8:pos+12])
 
 		switch tagID {
@@ -402,29 +420,105 @@ func parseTIFFGeotransform(raw []byte) geotransform {
 			if off < 0 || off+48 > len(raw) {
 				break
 			}
-			gt.xOrigin = math.Float64frombits(bo.Uint64(raw[off+24 : off+32]))
-			gt.yOrigin = math.Float64frombits(bo.Uint64(raw[off+32 : off+40]))
+			gt.xOrigin = math.Float64frombits(bo.Uint64(raw[off+24:off+32]))
+			gt.yOrigin = math.Float64frombits(bo.Uint64(raw[off+32:off+40]))
 		case tagModelPixelScale:
 			off := int(valueOffset)
 			if off < 0 || off+24 > len(raw) {
 				break
 			}
-			gt.xPixelSize = math.Float64frombits(bo.Uint64(raw[off : off+8]))
-			pY := math.Float64frombits(bo.Uint64(raw[off+8 : off+16]))
+			gt.xPixelSize = math.Float64frombits(bo.Uint64(raw[off:off+8]))
+			pY := math.Float64frombits(bo.Uint64(raw[off+8:off+16]))
 			if pY > 0 {
 				pY = -pY
 			}
 			gt.yPixelSize = pY
+		case tagGeoAsciiParams:
+			off := int(valueOffset)
+			n := int(count)
+			if off >= 0 && off+n <= len(raw) {
+				s := string(raw[off : off+n])
+				gt.utmZone = parseUTMZoneFromASCII(s)
+			}
 		}
 		pos += 12
 	}
 	return gt
 }
 
+// parseUTMZoneFromASCII extracts the UTM zone number from a GeoTIFF citation
+// string like "WGS 84 / UTM zone 44N|WGS 84|\0". Returns 0 if not found.
+func parseUTMZoneFromASCII(s string) float64 {
+	const prefix = "UTM zone "
+	idx := strings.Index(s, prefix)
+	if idx < 0 {
+		return 0
+	}
+	rest := s[idx+len(prefix):]
+	var zone int
+	for _, c := range rest {
+		if c >= '0' && c <= '9' {
+			zone = zone*10 + int(c-'0')
+		} else {
+			break
+		}
+	}
+	return float64(zone)
+}
+
+// --------------------------------------------------------------------------
+// Value extraction
+// --------------------------------------------------------------------------
+
+func extractFloats(img image.Image) []float64 {
+	switch i := img.(type) {
+	case *image.Gray:
+		out := make([]float64, len(i.Pix))
+		for k, v := range i.Pix {
+			out[k] = float64(v)
+		}
+		return out
+	case *image.Gray16:
+		out := make([]float64, len(i.Pix)/2)
+		for k := 0; k < len(i.Pix); k += 2 {
+			out[k/2] = float64(uint16(i.Pix[k])<<8 | uint16(i.Pix[k+1]))
+		}
+		return out
+	case *image.NRGBA:
+		w := i.Bounds().Dx()
+		h := i.Bounds().Dy()
+		out := make([]float64, w*h)
+		for y := 0; y < h; y++ {
+			for x := 0; x < w; x++ {
+				p := y*i.Stride + x*4
+				out[y*w+x] = float64(i.Pix[p])
+			}
+		}
+		return out
+	case *image.RGBA:
+		w := i.Bounds().Dx()
+		h := i.Bounds().Dy()
+		out := make([]float64, w*h)
+		for y := 0; y < h; y++ {
+			for x := 0; x < w; x++ {
+				p := y*i.Stride + x*4
+				out[y*w+x] = float64(i.Pix[p])
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+// --------------------------------------------------------------------------
+// Helpers
+// --------------------------------------------------------------------------
+
 func bandNameMapping(key string) string {
 	m := map[string]string{
-		"B1": "B1_Coastal", "B2": "B2_Blue", "B3": "B3_Green", "B4": "B4_Red",
-		"B5": "B5_NIR", "B6": "B6_SWIR1", "B7": "B7_SWIR2",
+		"B2": "B2_Blue", "B3": "B3_Green", "B4": "B4_Red",
+		"B5": "B5_NIR", "B6": "B6_SWIR1",
 		"B10": "B10_TIR", "B11": "B11_TIR", "ST_B10": "ST_B10",
 	}
 	if v, ok := m[key]; ok {
@@ -435,8 +529,10 @@ func bandNameMapping(key string) string {
 
 func bandScaleOffset(band string) (scale, offset float64) {
 	switch band {
-	case "B1", "B2", "B3", "B4", "B5", "B6", "B7":
-		return 0.0000275, -0.2
+	case "B4", "B5", "B6":
+		return 0.0000275, -0.1
+	case "B2", "B3":
+		return 0.0000275, -0.1
 	case "B10", "B11":
 		return 0.0000275, -0.1
 	case "ST_B10":

@@ -82,72 +82,29 @@ func main() {
 		}
 	}
 
-	if *pcSource {
+	// Auto-detect Planetary Computer from URL or --pc-source flag.
+	isPC := *pcSource || strings.Contains(cfg.STACURL, "planetarycomputer")
+	if isPC {
 		cfg.STACURL = "https://planetarycomputer.microsoft.com/api/stac/v1"
 		cfg.CollectionL2 = "landsat-c2-l2"
-
-		slog.Info("discovering Planetary Computer scenes",
-			"stac_url", cfg.STACURL,
-			"bbox", cfg.BBox,
-			"years", fmt.Sprintf("%d-%d", cfg.StartYear, cfg.EndYear),
-			"max_cloud", cfg.MaxCloud,
-		)
-
-		scenes, err := fetcher.DiscoverPCSplitWindowScenes(ctx, cfg)
-		if err != nil {
-			slog.Error("pc scene discovery failed", "error", err)
-			os.Exit(1)
-		}
-
-		var sceneTasks []worker.SceneTask
-		for _, s := range scenes {
-			sceneTasks = append(sceneTasks, worker.SceneTask{
-				SceneID:    s.SceneID,
-				DateTime:   s.DateTime,
-				CloudCover: s.CloudCover,
-				WRSPath:    s.WRSPath,
-				WRSRow:     s.WRSRow,
-				BandURLs:   s.Assets,
-				K1Band10:   s.K1Band10,
-				K2Band10:   s.K2Band10,
-				K1Band11:   s.K1Band11,
-				K2Band11:   s.K2Band11,
-			})
-		}
-
-		slog.Info("starting pc ingestion",
-			"workers", *numWorkers,
-			"scenes", len(sceneTasks),
-			"output", absOut,
-		)
-
-		pool := worker.NewPoolWithRetry(*numWorkers, absOut, cfg.RetryAttempts, cfg.RetryBackoff, logger)
-		sceneStats, err := pool.RunScenes(ctx, sceneTasks)
-		if err != nil {
-			slog.Error("ingestion failed", "error", err)
-			os.Exit(1)
-		}
-
-		slog.Info("ingestion complete",
-			"scenes_succeeded", sceneStats.ScenesSucceeded,
-			"scenes_failed", sceneStats.ScenesFailed,
-			"bands_downloaded", sceneStats.BandsDownloaded,
-			"total_bytes", sceneStats.TotalBytes,
-		)
-		return
 	}
 
-	if cfg.FetchSplitWindow {
+	if cfg.FetchSplitWindow || isPC {
 		slog.Info("discovering split-window scenes",
 			"stac_url", cfg.STACURL,
+			"provider", map[bool]string{true: "planetary-computer", false: "usgs-landsatlook"}[isPC],
 			"bbox", cfg.BBox,
 			"years", fmt.Sprintf("%d-%d", cfg.StartYear, cfg.EndYear),
 			"max_cloud", cfg.MaxCloud,
-			"collection_l2", cfg.CollectionL2,
-			"collection_toa", cfg.CollectionTOA,
 		)
 
-		scenes, err := fetcher.DiscoverSplitWindowScenes(ctx, cfg)
+		var scenes []fetcher.Scene
+		var err error
+		if isPC {
+			scenes, err = fetcher.DiscoverPCSplitWindowScenes(ctx, cfg)
+		} else {
+			scenes, err = fetcher.DiscoverSplitWindowScenes(ctx, cfg)
+		}
 		if err != nil {
 			slog.Error("scene discovery failed", "error", err)
 			os.Exit(1)

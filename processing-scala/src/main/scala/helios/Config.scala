@@ -25,6 +25,14 @@ case class PipelineConfig(
   trainYearEnd:          Int = 2031,
   testYearStart:         Int = 2032,
   testYearEnd:           Int = 2033,
+  // sampleRate: DEV-ONLY safety valve. Must default to 1.0 (full resolution).
+  // Sampling destroys spatial analysis fidelity — every pixel must reach the
+  // feature matrix for the urban-heat zoning analysis to be statistically
+  // valid. Sampling belongs at the ML training stage (cross-validation folds),
+  // NOT in the aggregation pipeline. Use only on constrained dev machines
+  // (≤8 GB RAM) where the pivot hash table exceeds available heap. Any result
+  // produced with sampleRate < 1.0 is explicitly NOT a pipeline validation.
+  sampleRate:            Double = 1.0,
 )
 
 object PipelineConfig {
@@ -62,6 +70,7 @@ object PipelineConfig {
       trainYearEnd          = i("train-year-end",     2031),
       testYearStart         = i("test-year-start",    2032),
       testYearEnd           = i("test-year-end",      2033),
+      sampleRate            = d("sample-rate",        1.0),
     )
   }
 }
