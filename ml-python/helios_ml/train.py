@@ -1,17 +1,17 @@
 """
 3.3 — Model Training (XGBoost)
 
-Trains an XGBoost regressor predicting LST_split_window from:
-  NDVI, Pv, zoning_target_encoded, lon, lat, cloud_cover, bt10_minus_bt11,
-  and a derived day-of-year seasonal feature.
+Trains an XGBoost regressor predicting LST from engineered features
+(NDVI, Pv, emissivity, spatial coordinates, land-cover encodings).
 
-BT10_minus_BT11 is the direct physical driver of the split-window correction
-and is included explicitly.  Early stopping uses a validation slice carved
-from the training years to avoid leakage into the held-out test years.
+Leakage guard: ST_B10 (the exact-copy single-channel LST) and all-null
+thermal columns (bt10, bt11, bt10_minus_bt11) are explicitly excluded
+from the feature matrix.  The baseline comparison still evaluates ST_B10
+separately for reference.
 
 Usage:
     uv run python -m helios_ml.train \
-        --data-dir ../processing-scala/staging/dense \
+        --data-dir ../staging/dense \
         --reports-dir ./reports \
         --sample-strategy systematic-grid \
         --sample-rate 0.1
@@ -112,15 +112,31 @@ def train(
     X_train_df = _add_seasonal_feature(X_train_df, full_df)
     X_test_df = _add_seasonal_feature(X_test_df, full_df)
 
-    # Drop columns not intended as model features.
-    DROP_COLS = ("tile_id", "year", "split", "has_thermal_split")
+    # ── Leakage & noise guard ──────────────────────────────────────
+    # Columns that are non-feature identifiers or metadata.
+    NON_FEATURE_COLS = ("tile_id", "year", "split", "has_thermal_split")
+
+    # ST_B10 is the EXACT COPY of the target `lst` when no split-window
+    # thermal bands are available (PC L2 source).  Including it would
+    # give the model a trivial identity mapping → R² ≈ 1.0 with zero
+    # predictive value.  Must be excluded from the feature matrix.
+    LEAKAGE_COLS = ("ST_B10",)
+
+    # Columns that are 100% null for Planetary Computer data (no B10_TIR /
+    # B11_TIR raw thermal).  They add no signal and clutter feature lists.
+    NULL_COLS = ("bt10", "bt11", "bt10_minus_bt11")
+
+    DROP_COLS = NON_FEATURE_COLS + LEAKAGE_COLS + NULL_COLS
+
     drop_train = [c for c in DROP_COLS if c in X_train_df.columns]
     drop_test = [c for c in DROP_COLS if c in X_test_df.columns]
     X_train_df = X_train_df.drop(drop_train)
     X_test_df = X_test_df.drop(drop_test)
 
     feature_names = list(X_train_df.columns)
-    console.print(f"  Feature cols ({len(feature_names)}): {feature_names}\n")
+
+    console.print(f"  [bold]Leakage guard — dropped columns:[/bold] {drop_train}")
+    console.print(f"  [bold]Final feature set ({len(feature_names)} cols):[/bold] {feature_names}\n")
 
     X_train = X_train_df.to_numpy().astype(np.float32)
     X_test = X_test_df.to_numpy().astype(np.float32)
@@ -174,7 +190,13 @@ def train(
 
     # Metrics on held-out test years.
     if len(X_test) == 0:
-        console.print("  [yellow]No test years present in data — skipping test evaluation[/yellow]")
+        console.print(
+            "\n  [bold red]⚠ DEGENERATE SPLIT: no test partition exists.[/bold red]\n"
+            "  All rows carry split='train'.  The val_fraction carve provides\n"
+            "  early-stopping feedback but is NOT a held-out evaluation.\n"
+            "  Any metrics on this val slice reflect in-sample fit, not\n"
+            "  generalization.  Do NOT report R² from this run as a result.\n"
+        )
         metrics = {"mae": float("nan"), "rmse": float("nan"), "r2": float("nan"), "mape_pct": float("nan")}
     else:
         dtest = xgb.DMatrix(X_test)
@@ -185,12 +207,32 @@ def train(
     console.print("\n[cyan]Baseline comparison: LST_single_channel (ST_B10)[/cyan]")
     st_b10 = full_df["ST_B10"] if "ST_B10" in full_df.columns else None
     if st_b10 is not None:
-        st_b10_test = st_b10.to_numpy().astype(np.float32)
-        mismatch = len(st_b10_test) != len(y_test_arr)
-        if not mismatch:
-            eval_baseline_lst_single_channel(y_test_arr, st_b10_test, console)
+        # When no test set exists, evaluate on the validation slice
+        # (same slice used for early stopping) — still in-sample.
+        if len(X_test) > 0:
+            st_b10_eval = st_b10.to_numpy().astype(np.float32)
+            y_eval = y_test_arr
+        elif len(X_val) > 0:
+            st_b10_val_idx = full_df["split"] == "train"
+            # Reconstruct val indices — val is first n_val rows of train
+            st_b10_arr = st_b10.to_numpy().astype(np.float32)
+            # Val slice indices correspond to the first n_val train rows
+            train_indices = full_df.with_row_index().filter(pl.col("split") == "train")["index"].to_list()
+            val_indices = train_indices[:n_val]
+            st_b10_eval = st_b10_arr[val_indices]
+            y_eval = y_val
+            console.print("  [yellow](Evaluating on val slice — no test set)[/yellow]")
         else:
-            console.print("  [yellow]SKIP — shape mismatch between ST_B10 and test split[/yellow]")
+            st_b10_eval = None
+            y_eval = None
+            console.print("  [yellow]SKIP — no evaluation data available[/yellow]")
+
+        if st_b10_eval is not None and y_eval is not None:
+            mismatch = len(st_b10_eval) != len(y_eval)
+            if not mismatch:
+                eval_baseline_lst_single_channel(y_eval, st_b10_eval, console)
+            else:
+                console.print("  [yellow]SKIP — shape mismatch between ST_B10 and evaluation split[/yellow]")
     else:
         console.print("  [yellow]SKIP — ST_B10 column not present in dense matrix[/yellow]")
 
@@ -202,9 +244,15 @@ def train(
 
     # SHAP dependence plots.
     if len(X_test) > 0:
-        console.print("[cyan]Generating SHAP plots...[/cyan]")
+        console.print("[cyan]Generating SHAP plots (on test set)...[/cyan]")
         shap_dependence_plots(
             model, X_test, feature_names=feature_names, out_dir=str(reports_path),
+        )
+        console.print(f"[green]✓ SHAP plots saved to {reports_path}/[/green]")
+    elif len(X_val) > 0:
+        console.print("[cyan]Generating SHAP plots (on val slice — no test set)...[/cyan]")
+        shap_dependence_plots(
+            model, X_val, feature_names=feature_names, out_dir=str(reports_path),
         )
         console.print(f"[green]✓ SHAP plots saved to {reports_path}/[/green]")
 
