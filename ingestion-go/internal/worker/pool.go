@@ -372,6 +372,43 @@ func (p *Pool) processScene(ctx context.Context, workerID int, scene SceneTask, 
 		"mem_delta_MB", memAfter-memBefore,
 	)
 
+	// ── Cleanup: remove raw TIFFs after successful parquet write ─────
+	// TIFFs are redundant once parquet is validated (PAR1 footer confirmed).
+	// They can be re-downloaded/re-signed from Planetary Computer if needed.
+	// This prevents unbounded disk growth during multi-year ingestion runs.
+	if err := cleanupSceneTIFFs(sceneDir, p.logger); err != nil {
+		p.logger.Warn("TIFF cleanup failed (non-fatal)", "scene", scene.SceneID, "error", err)
+	}
+
+	return nil
+}
+
+// cleanupSceneTIFFs removes all .tif files in sceneDir after successful parquet
+// write. This is safe because: (1) the parquet file is the source of truth,
+// (2) SAS-signed URLs are short-lived anyway, (3) TIFFs can be re-downloaded
+// from Planetary Computer if reprocessing is needed.
+func cleanupSceneTIFFs(sceneDir string, logger *slog.Logger) error {
+	entries, err := os.ReadDir(sceneDir)
+	if err != nil {
+		return fmt.Errorf("read scene dir: %w", err)
+	}
+	var removed int
+	for _, e := range entries {
+		if !e.IsDir() && filepath.Ext(e.Name()) == ".tif" {
+			path := filepath.Join(sceneDir, e.Name())
+			if err := os.Remove(path); err != nil {
+				logger.Warn("failed to remove TIFF", "path", path, "error", err)
+				continue
+			}
+			removed++
+		}
+	}
+	if removed > 0 {
+		logger.Info("cleaned up raw TIFFs",
+			"scene", filepath.Base(sceneDir),
+			"removed", removed,
+		)
+	}
 	return nil
 }
 
