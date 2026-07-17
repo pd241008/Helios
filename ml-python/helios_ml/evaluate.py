@@ -3,8 +3,8 @@
 
 Reports RMSE, MAE, R² on the held-out test years and also evaluates
 LST_single_channel as a baseline.  Generates SHAP summary/dependence
-plots confirming the model leverages the BT10_minus_BT11 thermal
-differential term.
+plots for key physical features (ndvi, zoning_category_encoded; and
+bt10_minus_bt11 when available — currently absent for PC-sourced data).
 """
 
 from __future__ import annotations
