@@ -9,6 +9,9 @@ object Main {
     val cfg = PipelineConfig.fromArgs(args)
     val metaDir = if (cfg.metadataDir.isEmpty) s"${cfg.inputDir}/landsat" else cfg.metadataDir
 
+    // Validate year ranges before any Spark work — fail fast on degenerate split.
+    cfg.validateYearRanges()
+
     println(s"═══ Helios Processing Pipeline ═══")
     println(s"  Input:   ${cfg.inputDir}")
     println(s"  Output:  ${cfg.outputDir}")
