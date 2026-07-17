@@ -74,6 +74,10 @@ On a machine with 32 GB RAM, allocate roughly 50–60 % to Spark
 long, increase `spark.driver.memory` further or reduce partition
 counts (see below).
 
+On a 12 GB / 10-core WSL2 environment (i9-13900H): driver/executor
+memory 9g, shuffle partitions 20.  The remaining 3 GB covers OS +
+WSL2 overhead + off-heap JVM memory.
+
 ### Shuffle partitions
 
 `spark.sql.shuffle.partitions` controls how many partitions Spark
@@ -88,6 +92,7 @@ creates too many small tasks.
 |-------|----------------------|
 | 4     | 8                    |
 | 8     | 16                   |
+| 10    | 20                   |
 | 16    | 32                   |
 | 32    | 64                   |
 
