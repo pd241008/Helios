@@ -1,3 +1,4 @@
+
 # ╔══════════════════════════════════════════════════════════════════╗
 # ║  Helios — Cross-Language Pipeline Orchestrator                  ║
 # ║  Targets: setup | ingest | process | train | all | clean        ║
@@ -13,12 +14,16 @@ SCALA_DIR   := $(ROOT_DIR)/processing-scala
 PY_DIR      := $(ROOT_DIR)/ml-python
 STAGING_DIR := $(ROOT_DIR)/staging
 
+# ── External drive (F: / 931 GB, "Personal Use") ─────────────────
+ARCHIVE_DIR := /mnt/f/helios-archive
+
 # ── Ensure staging dirs exist ─────────────────────────────────────
 $(STAGING_DIR)/raw $(STAGING_DIR)/dense:
 	@mkdir -p $@
 
 .PHONY: help setup setup-go setup-scala setup-python \
-        ingest process train all clean lint test
+        ingest process train all clean lint test \
+        archive archive-raw archive-dense archive-reports sync-check
 
 # ── Help ──────────────────────────────────────────────────────────
 help: ## Show this help
@@ -103,3 +108,39 @@ clean: ## Remove all build artifacts and staging data
 	cd $(SCALA_DIR) && sbt clean
 	rm -rf $(PY_DIR)/.venv $(PY_DIR)/models
 	@echo "✓ Cleaned."
+
+# ══════════════════════════════════════════════════════════════════
+#  ARCHIVE (external drive — F: /mnt/f/helios-archive)
+# ══════════════════════════════════════════════════════════════════
+
+archive-raw: ## Sync raw parquet to external drive
+	@echo "═══ Archiving raw parquet → $(ARCHIVE_DIR)/staging/raw/ ═══"
+	@mkdir -p $(ARCHIVE_DIR)/staging/raw/landsat
+	rsync -av $(STAGING_DIR)/raw/landsat/*.parquet $(ARCHIVE_DIR)/staging/raw/landsat/
+	rsync -av $(STAGING_DIR)/raw/zoning.geojson $(ARCHIVE_DIR)/staging/raw/ 2>/dev/null || true
+	@echo "✓ Raw archived."
+
+archive-dense: ## Sync dense matrices to external drive
+	@echo "═══ Archiving dense matrix → $(ARCHIVE_DIR)/staging/dense/ ═══"
+	@mkdir -p $(ARCHIVE_DIR)/staging/dense
+	rsync -av $(STAGING_DIR)/dense/ $(ARCHIVE_DIR)/staging/dense/
+	@echo "✓ Dense archived."
+
+archive-reports: ## Sync ML reports to external drive
+	@echo "═══ Archiving reports → $(ARCHIVE_DIR)/reports/ ═══"
+	@mkdir -p $(ARCHIVE_DIR)/reports
+	rsync -av $(PY_DIR)/reports/ $(ARCHIVE_DIR)/reports/
+	@echo "✓ Reports archived."
+
+archive: archive-raw archive-dense archive-reports ## Sync all validated data to external drive
+	@echo "════════════════════════════════════════"
+	@echo "  Archive sync complete."
+	@echo "  Target: $(ARCHIVE_DIR)"
+	@echo "════════════════════════════════════════"
+
+sync-check: ## Verify archive matches local staging (dry-run rsync)
+	@echo "═══ Checking archive sync status ═══"
+	@rsync -avn $(STAGING_DIR)/raw/landsat/*.parquet $(ARCHIVE_DIR)/staging/raw/landsat/ 2>&1 | tail -5
+	@rsync -avn $(STAGING_DIR)/dense/ $(ARCHIVE_DIR)/staging/dense/ 2>&1 | tail -5
+	@echo "═══ Archive disk usage ═══"
+	@du -sh $(ARCHIVE_DIR) 2>/dev/null || echo "Archive dir not found"
