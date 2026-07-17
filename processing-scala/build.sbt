@@ -33,8 +33,8 @@ lazy val root = project
 
     // ── JVM options for Spark local mode (Java 17 + Kryo compat) ─
     javaOptions ++= Seq(
-      "-Xmx6g",
-      "-Xms2g",
+      "-Xmx9g",
+      "-Xms4g",
       "-XX:+UseG1GC",
       "-XX:MaxGCPauseMillis=200",
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
