@@ -33,7 +33,47 @@ case class PipelineConfig(
   // (≤8 GB RAM) where the pivot hash table exceeds available heap. Any result
   // produced with sampleRate < 1.0 is explicitly NOT a pipeline validation.
   sampleRate:            Double = 1.0,
-)
+  // allowDegenerateSplit: opt-in bypass for pilot/smoke-test runs where
+  // train and test year ranges intentionally overlap (e.g. single-scene
+  // validation). Must be an explicit CLI flag — never the silent default.
+  allowDegenerateSplit:  Boolean = false,
+) {
+
+  /** Validate that train/test year ranges do not overlap.
+    *
+    * Spark's .when() chain in FeatureMatrix evaluates in order and stops at
+    * first match.  If the train range [trainYearStart, trainYearEnd] overlaps
+    * the test range [testYearStart, testYearEnd], every matching year silently
+    * gets "train" and the test branch is unreachable — producing a dense matrix
+    * with zero test rows and no error.
+    *
+    * Call this before any Spark job runs.  Throws IllegalArgumentException
+    * if the ranges overlap and allowDegenerateSplit is not set.
+    */
+  def validateYearRanges(): Unit = {
+    val rangesOverlap = trainYearStart <= testYearEnd && testYearStart <= trainYearEnd
+    if (rangesOverlap && !allowDegenerateSplit) {
+      val overlapStart = math.max(trainYearStart, testYearStart)
+      val overlapEnd   = math.min(trainYearEnd, testYearEnd)
+      val years = if (overlapStart == overlapEnd) s"year $overlapStart"
+                  else s"years $overlapStart–$overlapEnd"
+      throw new IllegalArgumentException(
+        s"""Train/test year ranges overlap on $years.
+           |
+           |  train range: [${trainYearStart}, ${trainYearEnd}]
+           |  test  range: [${testYearStart}, ${testYearEnd}]
+           |
+           |Spark's chained .when() assigns split in priority order (train
+           |first, then test).  Overlapping years silently get "train",
+           |producing a dense matrix with zero test rows.
+           |
+           |Fix: use non-overlapping year ranges, or pass
+           |  --allow-degenerate-split true
+           |to explicitly opt in for pilot/smoke-test runs.""".stripMargin
+      )
+    }
+  }
+}
 
 object PipelineConfig {
   def fromArgs(args: Array[String]): PipelineConfig = {
@@ -44,6 +84,7 @@ object PipelineConfig {
     def d(k: String, fallback: Double) = m.get(k).map(_.toDouble).getOrElse(fallback)
     def i(k: String, fallback: Int)    = m.get(k).map(_.toInt).getOrElse(fallback)
     def s(k: String, fallback: String) = m.getOrElse(k, fallback)
+    def b(k: String, fallback: Boolean) = m.get(k).map(_.toBoolean).getOrElse(fallback)
 
     PipelineConfig(
       inputDir              = s("input",              "./staging/raw"),
@@ -71,6 +112,7 @@ object PipelineConfig {
       testYearStart         = i("test-year-start",    2032),
       testYearEnd           = i("test-year-end",      2033),
       sampleRate            = d("sample-rate",        1.0),
+      allowDegenerateSplit  = b("allow-degenerate-split", false),
     )
   }
 }
