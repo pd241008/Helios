@@ -9,19 +9,26 @@ object FeatureMatrix {
     df: DataFrame,
     cfg: PipelineConfig,
   ): DataFrame = {
+    // Extract day-of-year from the acquisition timestamp.
+    // The `timestamp` column survives the pivot (it's in the groupBy key
+    // in pivotBands) and carries the actual Landsat acquisition date/time.
+    // dayofyear() returns an integer 1–366 that the Python side uses for
+    // sin/cos seasonal encoding.
+    val withDoy = df.withColumn("doy", dayofyear(col("timestamp")))
+
     val baseCols = Seq(
-      "tile_id", "lat", "lon", "year",
+      "tile_id", "lat", "lon", "year", "doy",
       "lulc_class_encoded", "zoning_category_encoded",
       "ndvi", "ndbi",
       "lst",
     )
 
-    val extraCols = df.columns.toSet -- baseCols.toSet
+    val extraCols = withDoy.columns.toSet -- baseCols.toSet
     val wanted = baseCols ++ extraCols.filter(c =>
       c.startsWith("B") || c.startsWith("ST_") || c == "pv" || c == "eps10" || c == "eps11" || c == "bt10" || c == "bt11" || c == "bt10_minus_bt11" || c == "has_thermal_split"
     )
 
-    val selected = df.select(wanted.map(col): _*)
+    val selected = withDoy.select(wanted.map(col): _*)
 
     val roundCols = selected.schema.fields
       .filter(f => f.dataType.typeName == "double" || f.dataType.typeName == "float")
