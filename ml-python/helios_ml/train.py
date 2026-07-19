@@ -114,7 +114,7 @@ def train(
 
     # ── Leakage & noise guard ──────────────────────────────────────
     # Columns that are non-feature identifiers or metadata.
-    NON_FEATURE_COLS = ("tile_id", "year", "split", "has_thermal_split")
+    NON_FEATURE_COLS = ("tile_id", "year", "doy", "split", "has_thermal_split")
 
     # ST_B10 is the EXACT COPY of the target `lst` when no split-window
     # thermal bands are available (PC L2 source).  Including it would
@@ -263,15 +263,40 @@ def _add_seasonal_feature(
     df: pl.DataFrame,
     full_df: pl.DataFrame,
 ) -> pl.DataFrame:
-    """Derive a day-of-year seasonal feature and attach it to *df*.
+    """Derive cyclic day-of-year features and attach them to *df*.
 
-    The seasonal feature is ``sin(2π * doy / 366)``, a smooth cyclic encoding
-    of the acquisition date that helps the model capture annual temperature
-    cycles without learning a discrete year index.
+    Uses the ``doy`` column (day-of-year, 1–366) from the Scala pipeline's
+    ``dayofyear(timestamp)`` extraction.  Produces two features:
+
+    - ``doy_sin = sin(2π × doy / 366)``
+    - ``doy_cos = cos(2π × doy / 366)``
+
+    Both are needed because a single sine term cannot distinguish symmetric
+    days (e.g. day 90 ≈ day 275 by sine alone).  The cos term breaks that
+    symmetry.
+
+    Falls back to the old year-based computation (constant 0) ONLY when
+    ``doy`` is genuinely absent (running against an older dense matrix that
+    predates the Scala fix).  Logs a clear WARNING when the fallback
+    triggers so it's never silently used.
     """
     if len(df) == 0:
         return df
 
+    if "doy" in df.columns:
+        phase = (2.0 * np.pi * df["doy"].cast(pl.Float32) / 366.0)
+        return df.with_columns([
+            phase.sin().alias("doy_sin"),
+            phase.cos().alias("doy_cos"),
+        ])
+
+    # ── Fallback: old year-based computation (pre-doy-fix matrices) ──
+    print(
+        "  \033[93mWARNING: 'doy' column not found — falling back to "
+        "year-based doy_sin (constant 0).\033[0m\n"
+        "  This means the seasonal feature is BROKEN. Re-run the Scala "
+        "pipeline to generate a dense matrix with the 'doy' column."
+    )
     if "year" not in df.columns:
         print("  WARNING: no year column available for seasonal feature — skipping")
         return df
@@ -280,7 +305,10 @@ def _add_seasonal_feature(
     doy_sin = (
         (2.0 * np.pi * (df["year"] - year_min).cast(pl.Float32) / 366.0).sin().alias("doy_sin")
     )
-    return df.with_columns(doy_sin)
+    doy_cos = (
+        (2.0 * np.pi * (df["year"] - year_min).cast(pl.Float32) / 366.0).cos().alias("doy_cos")
+    )
+    return df.with_columns([doy_sin, doy_cos])
 
 
 if __name__ == "__main__":
