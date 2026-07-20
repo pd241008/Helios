@@ -113,26 +113,30 @@ clean: ## Remove all build artifacts and staging data
 #  ARCHIVE (external drive — F: /mnt/f/helios-archive)
 # ══════════════════════════════════════════════════════════════════
 
-archive-raw: ## Sync raw parquet to external drive
+mount-check: ## Verify external drive is actually mounted (prevents local aliasing)
+	@mount | grep -q "/mnt/f type 9p" || mount | grep -q "/mnt/f type drvfs" || \
+		(echo "ERROR: /mnt/f is not mounted as a remote filesystem! Run 'sudo mount -t drvfs F: /mnt/f' first." && exit 1)
+
+archive-raw: mount-check ## Sync raw parquet to external drive
 	@echo "═══ Archiving raw parquet → $(ARCHIVE_DIR)/staging/raw/ ═══"
 	@mkdir -p $(ARCHIVE_DIR)/staging/raw/landsat
 	rsync -av $(STAGING_DIR)/raw/landsat/*.parquet $(ARCHIVE_DIR)/staging/raw/landsat/
 	rsync -av $(STAGING_DIR)/raw/zoning.geojson $(ARCHIVE_DIR)/staging/raw/ 2>/dev/null || true
 	@echo "✓ Raw archived."
 
-archive-dense: ## Sync dense matrices to external drive
-	@echo "═══ Archiving dense matrix → $(ARCHIVE_DIR)/staging/helios_output/ ═══"
-	@mkdir -p $(ARCHIVE_DIR)/staging/helios_output
-	rsync -av $(STAGING_DIR)/helios_output/ $(ARCHIVE_DIR)/staging/helios_output/
+archive-dense: mount-check ## Sync dense matrices to external drive
+	@echo "═══ Archiving dense matrix → $(ARCHIVE_DIR)/staging/dense/ ═══"
+	@mkdir -p $(ARCHIVE_DIR)/staging/dense
+	rsync -av $(STAGING_DIR)/dense/ $(ARCHIVE_DIR)/staging/dense/
 	@echo "✓ Dense archived."
 
-archive-reports: ## Sync ML reports to external drive
+archive-reports: mount-check ## Sync ML reports to external drive
 	@echo "═══ Archiving reports → $(ARCHIVE_DIR)/reports/ ═══"
 	@mkdir -p $(ARCHIVE_DIR)/reports
 	rsync -av $(PY_DIR)/reports/ $(ARCHIVE_DIR)/reports/
 	@echo "✓ Reports archived."
 
-archive: archive-raw archive-dense archive-reports ## Sync all validated data to external drive
+archive: mount-check archive-raw archive-dense archive-reports ## Sync all validated data to external drive
 	@echo "════════════════════════════════════════"
 	@echo "  Archive sync complete."
 	@echo "  Target: $(ARCHIVE_DIR)"
@@ -141,6 +145,6 @@ archive: archive-raw archive-dense archive-reports ## Sync all validated data to
 sync-check: ## Verify archive matches local staging (dry-run rsync)
 	@echo "═══ Checking archive sync status ═══"
 	@rsync -avn $(STAGING_DIR)/raw/landsat/*.parquet $(ARCHIVE_DIR)/staging/raw/landsat/ 2>&1 | tail -5
-	@rsync -avn $(STAGING_DIR)/helios_output/ $(ARCHIVE_DIR)/staging/helios_output/ 2>&1 | tail -5
+	@rsync -avn $(STAGING_DIR)/dense/ $(ARCHIVE_DIR)/staging/dense/ 2>&1 | tail -5
 	@echo "═══ Archive disk usage ═══"
 	@du -sh $(ARCHIVE_DIR) 2>/dev/null || echo "Archive dir not found"

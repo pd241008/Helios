@@ -32,6 +32,7 @@ type Config struct {
 	StartYear        int
 	EndYear          int
 	MaxCloud         float64
+	MaxAOICloud      float64
 	Bands            []string
 	CollectionL2     string
 	CollectionTOA    string
@@ -50,6 +51,7 @@ func DefaultConfig() Config {
 		StartYear:        2014,
 		EndYear:          2023,
 		MaxCloud:         10,
+		MaxAOICloud:      10,
 		Bands:            []string{"B2", "B3", "B4", "B5", "B6", "B10"},
 		CollectionL2:     "landsat-8-c2-l2",
 		CollectionTOA:    "landsat-8-c2-l1",
