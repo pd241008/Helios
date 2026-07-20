@@ -25,7 +25,8 @@ func main() {
 	bbox := flag.String("bbox", "79.9469,12.8000,80.3450,13.2300", "Bounding box: min_lon,min_lat,max_lon,max_lat")
 	startYear := flag.Int("start-year", 2014, "Start year for scene search")
 	endYear := flag.Int("end-year", 2023, "End year for scene search")
-	maxCloud := flag.Float64("max-cloud", 10, "Maximum cloud cover percentage")
+	maxCloud := flag.Float64("max-cloud", 10, "Maximum cloud cover percentage (scene-wide)")
+	maxAOICloud := flag.Float64("max-aoi-cloud", 10, "Maximum cloud cover percentage over the AOI specifically")
 	fetchSplitWindow := flag.Bool("fetch-split-window", false, "Fetch TOA B10/B11 for split-window LST")
 	pcSource := flag.Bool("pc-source", false, "Use Microsoft Planetary Computer as STAC source instead of USGS LandsatLook")
 	lulcShapefile := flag.String("lulc-shapefile", "", "Path to .shp shapefile for LULC features")
@@ -60,6 +61,7 @@ func main() {
 		StartYear:        *startYear,
 		EndYear:          *endYear,
 		MaxCloud:         *maxCloud,
+		MaxAOICloud:      *maxAOICloud,
 		FetchSplitWindow: *fetchSplitWindow,
 		Workers:          *numWorkers,
 		RetryAttempts:    3,
@@ -132,7 +134,12 @@ func main() {
 			"output", absOut,
 		)
 
-		pool := worker.NewPoolWithRetry(*numWorkers, absOut, cfg.RetryAttempts, cfg.RetryBackoff, logger)
+		pool := worker.NewPoolWithRetry(
+			cfg.Workers,
+			filepath.Join(cfg.StagingDir, "landsat"),
+			cfg,
+			logger,
+		)
 		sceneStats, err := pool.RunScenes(ctx, sceneTasks)
 		if err != nil {
 			slog.Error("ingestion failed", "error", err)
@@ -186,7 +193,7 @@ func main() {
 		"output", absOut,
 	)
 
-	pool := worker.NewPool(*numWorkers, absOut, logger)
+	pool := worker.NewPool(*numWorkers, absOut, cfg, logger)
 	stats, err := pool.Run(ctx, tasks)
 	if err != nil {
 		slog.Error("ingestion failed", "error", err)

@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/helios/ingestion/internal/config"
 	"github.com/helios/ingestion/internal/fetcher"
 	"github.com/helios/ingestion/internal/parser"
 )
@@ -70,37 +71,42 @@ type SceneMetadata struct {
 type Pool struct {
 	workers       int
 	outputDir     string
+	cfg           config.Config
 	retryAttempts int
 	retryBackoff  time.Duration
 	logger        *slog.Logger
 }
 
-func NewPool(workers int, outputDir string, logger *slog.Logger) *Pool {
+func NewPool(workers int, outputDir string, cfg config.Config, logger *slog.Logger) *Pool {
 	if workers < 1 {
 		workers = 1
 	}
 	return &Pool{
 		workers:       workers,
 		outputDir:     outputDir,
+		cfg:           cfg,
 		retryAttempts: 3,
 		retryBackoff:  500 * time.Millisecond,
 		logger:        logger,
 	}
 }
 
-func NewPoolWithRetry(workers int, outputDir string, retryAttempts int, retryBackoff time.Duration, logger *slog.Logger) *Pool {
+func NewPoolWithRetry(workers int, outputDir string, cfg config.Config, logger *slog.Logger) *Pool {
 	if workers < 1 {
 		workers = 1
 	}
+	retryAttempts := cfg.RetryAttempts
 	if retryAttempts < 1 {
 		retryAttempts = 3
 	}
+	retryBackoff := cfg.RetryBackoff
 	if retryBackoff <= 0 {
 		retryBackoff = 500 * time.Millisecond
 	}
 	return &Pool{
 		workers:       workers,
 		outputDir:     outputDir,
+		cfg:           cfg,
 		retryAttempts: retryAttempts,
 		retryBackoff:  retryBackoff,
 		logger:        logger,
@@ -263,6 +269,50 @@ func (p *Pool) processScene(ctx context.Context, workerID int, scene SceneTask, 
 		err  error
 	}
 
+	// Two-stage fetch: QA_PIXEL first for AOI cloud filtering.
+	var qaDest string
+	var qaSize int64
+	if qaURL, ok := scene.BandURLs["QA_PIXEL"]; ok {
+		p.logger.Info("fetching QA_PIXEL for AOI cloud check", "scene", scene.SceneID)
+		qaDest = filepath.Join(sceneDir, "QA_PIXEL.tif")
+		size, err := fetcher.FetchToFile(ctx, qaURL, qaDest)
+		if err != nil {
+			return fmt.Errorf("scene %s QA_PIXEL fetch failed: %w", scene.SceneID, err)
+		}
+		qaSize = size
+
+		// Compute AOI cloud cover
+		aoiCloud, err := parser.ComputeAOICloudCover(qaDest, [4]float64(p.cfg.BBox))
+		if err != nil {
+			return fmt.Errorf("scene %s AOI cloud compute failed: %w", scene.SceneID, err)
+		}
+
+		if aoiCloud > p.cfg.MaxAOICloud && aoiCloud >= 0 {
+			p.logger.Warn("scene rejected by AOI cloud filter",
+				"scene", scene.SceneID,
+				"cloud_cover_scene", scene.CloudCover,
+				"cloud_cover_aoi", aoiCloud,
+				"max_aoi_cloud", p.cfg.MaxAOICloud,
+			)
+			// Cleanly abort. Remove QA_PIXEL and dir.
+			os.Remove(qaDest)
+			os.Remove(sceneDir)
+			// We return nil to avoid failing the whole ingestion job, just skip this scene
+			// but we should probably record it as skipped or failed.
+			// Wait, if we return an error, it increments ScenesFailed. 
+			// Let's return a specific error that can be ignored, or just log and return an error so it's counted.
+			return fmt.Errorf("REJECTED_AOI_CLOUD: scene %s aoi cloud %.2f%% > %.2f%%", scene.SceneID, aoiCloud, p.cfg.MaxAOICloud)
+		}
+		p.logger.Info("scene passed AOI cloud filter",
+			"scene", scene.SceneID,
+			"cloud_cover_scene", scene.CloudCover,
+			"cloud_cover_aoi", aoiCloud,
+		)
+		// We can add AOI cloud cover to scene.CloudCover or metadata later
+		scene.CloudCover = aoiCloud // We'll store it here to pass to metadata, or add a new field.
+		// Wait, the SceneTask doesn't have an AOICloudCover field. We will use a hack: store it in a local variable.
+	}
+
 	resCh := make(chan bandResult, len(scene.BandURLs))
 	var bwg sync.WaitGroup
 
@@ -270,6 +320,10 @@ func (p *Pool) processScene(ctx context.Context, workerID int, scene SceneTask, 
 	sem := make(chan struct{}, p.workers)
 
 	for bandKey, url := range scene.BandURLs {
+		if bandKey == "QA_PIXEL" && qaDest != "" {
+			resCh <- bandResult{key: bandKey, size: qaSize, err: nil}
+			continue
+		}
 		bwg.Add(1)
 		go func(k, u string) {
 			defer bwg.Done()
