@@ -246,13 +246,13 @@ def train(
     if len(X_test) > 0:
         console.print("[cyan]Generating SHAP plots (on test set)...[/cyan]")
         shap_dependence_plots(
-            model, X_test, feature_names=feature_names, out_dir=str(reports_path),
+            model, X_test, feature_names=feature_names, out_dir=str(reports_path), random_seed=random_seed,
         )
         console.print(f"[green]✓ SHAP plots saved to {reports_path}/[/green]")
     elif len(X_val) > 0:
         console.print("[cyan]Generating SHAP plots (on val slice — no test set)...[/cyan]")
         shap_dependence_plots(
-            model, X_val, feature_names=feature_names, out_dir=str(reports_path),
+            model, X_val, feature_names=feature_names, out_dir=str(reports_path), random_seed=random_seed,
         )
         console.print(f"[green]✓ SHAP plots saved to {reports_path}/[/green]")
 

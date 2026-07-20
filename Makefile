@@ -121,9 +121,9 @@ archive-raw: ## Sync raw parquet to external drive
 	@echo "✓ Raw archived."
 
 archive-dense: ## Sync dense matrices to external drive
-	@echo "═══ Archiving dense matrix → $(ARCHIVE_DIR)/staging/dense/ ═══"
-	@mkdir -p $(ARCHIVE_DIR)/staging/dense
-	rsync -av $(STAGING_DIR)/dense/ $(ARCHIVE_DIR)/staging/dense/
+	@echo "═══ Archiving dense matrix → $(ARCHIVE_DIR)/staging/helios_output/ ═══"
+	@mkdir -p $(ARCHIVE_DIR)/staging/helios_output
+	rsync -av $(STAGING_DIR)/helios_output/ $(ARCHIVE_DIR)/staging/helios_output/
 	@echo "✓ Dense archived."
 
 archive-reports: ## Sync ML reports to external drive
@@ -141,6 +141,6 @@ archive: archive-raw archive-dense archive-reports ## Sync all validated data to
 sync-check: ## Verify archive matches local staging (dry-run rsync)
 	@echo "═══ Checking archive sync status ═══"
 	@rsync -avn $(STAGING_DIR)/raw/landsat/*.parquet $(ARCHIVE_DIR)/staging/raw/landsat/ 2>&1 | tail -5
-	@rsync -avn $(STAGING_DIR)/dense/ $(ARCHIVE_DIR)/staging/dense/ 2>&1 | tail -5
+	@rsync -avn $(STAGING_DIR)/helios_output/ $(ARCHIVE_DIR)/staging/helios_output/ 2>&1 | tail -5
 	@echo "═══ Archive disk usage ═══"
 	@du -sh $(ARCHIVE_DIR) 2>/dev/null || echo "Archive dir not found"
