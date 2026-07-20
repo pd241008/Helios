@@ -285,6 +285,9 @@ func DiscoverPCSplitWindowScenes(ctx context.Context, cfg config.Config) ([]Scen
 		delete(s.Assets, "MTL")
 
 		scenes = append(scenes, s)
+		if len(scenes) == 2 {
+			break
+		}
 	}
 
 	log.Printf("[pc-discovery] scenes after required-band filter: %d (from %d raw features)",
