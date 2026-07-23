@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	maxRetries        = 3
-	initialBackoff    = 500 * time.Millisecond
+	maxRetries        = 6
+	initialBackoff    = 2 * time.Second
 	perRequestTimeout = 2 * time.Minute
 	maxResponseBytes  = 512 << 20
 )

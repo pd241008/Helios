@@ -142,16 +142,19 @@ func DiscoverPCSplitWindowScenes(ctx context.Context, cfg config.Config) ([]Scen
 	bbox := []float64{cfg.BBox[0], cfg.BBox[1], cfg.BBox[2], cfg.BBox[3]}
 
 	filter := &STACFilter{
-		Op: "and",
+		Op: "in",
 		Args: []any{
-			map[string]any{"op": "<", "args": []any{
-				map[string]string{"property": "eo:cloud_cover"},
-				cfg.MaxCloud,
-			}},
-			map[string]any{"op": "in", "args": []any{
-				map[string]string{"property": "platform"},
-				[]string{"landsat-8", "landsat-9"},
-			}},
+			map[string]string{"property": "id"},
+			[]string{
+				"LC08_L2SP_142051_20161016_02_T1",
+				"LC08_L2SP_142051_20160728_02_T1",
+				"LC08_L2SP_142051_20160423_02_T1",
+				"LC08_L2SP_142051_20160407_02_T1",
+				"LC09_L2SP_142051_20221025_02_T1",
+				"LC08_L2SP_142051_20220526_02_T1",
+				"LC09_L2SP_142051_20220331_02_T1",
+				"LC08_L2SP_142051_20220203_02_T1",
+			},
 		},
 	}
 
@@ -285,9 +288,6 @@ func DiscoverPCSplitWindowScenes(ctx context.Context, cfg config.Config) ([]Scen
 		delete(s.Assets, "MTL")
 
 		scenes = append(scenes, s)
-		if len(scenes) == 2 {
-			break
-		}
 	}
 
 	log.Printf("[pc-discovery] scenes after required-band filter: %d (from %d raw features)",

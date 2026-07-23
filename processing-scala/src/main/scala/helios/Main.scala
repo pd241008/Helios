@@ -32,16 +32,16 @@ object Main {
       .config("spark.sql.adaptive.enabled", "true")
       .config("spark.sql.parquet.compression.codec", "zstd")
       .config("spark.serializer", "org.apache.spark.serializer.JavaSerializer")
-      .config("spark.sql.shuffle.partitions", "20")
-      .config("spark.driver.memory", "9g")
-      .config("spark.executor.memory", "9g")
+      .config("spark.sql.shuffle.partitions", "200")
+      .config("spark.driver.memory", "5g")
+      .config("spark.executor.memory", "5g")
       .config("spark.memory.fraction", "0.85")
       .config("spark.memory.storageFraction", "0.2")
       .config("spark.sql.files.maxPartitionBytes", "33554432")
       .config("spark.sql.shuffle.spill.compress", "true")
       .getOrCreate()
 
-    spark.sparkContext.setLogLevel("WARN")
+    // spark.sparkContext.setLogLevel("WARN")
 
     SedonaSQLRegistrator.registerAll(spark)
 
