@@ -53,7 +53,7 @@ from matplotlib.gridspec import GridSpec
 # ══════════════════════════════════════════════════════════════════
 
 DEFAULT_BBOX = [79.9469, 12.8000, 80.3450, 13.2300]  # Chennai
-DEFAULT_DATA_DIR = "../staging/dense"
+DEFAULT_DATA_DIR = "/mnt/f/helios-archive/staging/dense"
 DEFAULT_OUTPUT_DIR = "./reports/heatmaps"
 
 WATER_VAPOR_CAVEAT = (

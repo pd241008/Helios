@@ -136,7 +136,7 @@ func main() {
 
 		pool := worker.NewPoolWithRetry(
 			cfg.Workers,
-			filepath.Join(cfg.StagingDir, "landsat"),
+			cfg.StagingDir,
 			cfg,
 			logger,
 		)
