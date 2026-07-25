@@ -45,7 +45,7 @@ console = Console()
 @app.command()
 def train(
     data_dir: str = typer.Option(
-        "./staging/dense",
+        "/mnt/f/helios-archive/staging/dense",
         "--data-dir",
         help="Path to dense Parquet matrix from Scala pipeline.",
     ),

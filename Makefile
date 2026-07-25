@@ -12,7 +12,7 @@ ROOT_DIR    := $(shell pwd)
 GO_DIR      := $(ROOT_DIR)/ingestion-go
 SCALA_DIR   := $(ROOT_DIR)/processing-scala
 PY_DIR      := $(ROOT_DIR)/ml-python
-STAGING_DIR := $(ROOT_DIR)/staging
+STAGING_DIR := /mnt/f/helios-archive/staging
 
 # ── External drive (F: / 931 GB, "Personal Use") ─────────────────
 ARCHIVE_DIR := /mnt/f/helios-archive
@@ -56,9 +56,9 @@ ingest: $(STAGING_DIR)/raw ## Run Go ingestion worker pool
 		--output-dir $(STAGING_DIR)/raw \
 		--stac-url https://planetarycomputer.microsoft.com/api/stac/v1 \
 		--bbox 79.9469,12.8,80.345,13.23 \
-		--start-year 2023 --end-year 2023 \
-		--max-cloud 10 \
-		--workers 8
+		--start-year 2016 --end-year 2026 \
+		--max-cloud 30 \
+		--workers 4
 	@echo "✓ Raw parquet files written to $(STAGING_DIR)/raw"
 
 process: $(STAGING_DIR)/dense ## Run Scala/Spark aggregation
@@ -102,12 +102,12 @@ test: ## Run tests across all languages
 #  CLEANUP
 # ══════════════════════════════════════════════════════════════════
 
-clean: ## Remove all build artifacts and staging data
-	rm -rf $(STAGING_DIR)
+clean: ## Remove local build artifacts only (preserves F:\ drive staging data)
+	rm -rf $(GO_DIR)/bin $(SCALA_DIR)/target $(PY_DIR)/.venv $(PY_DIR)/__pycache__ $(PY_DIR)/.pytest_cache
 	cd $(GO_DIR)    && go clean -cache
 	cd $(SCALA_DIR) && sbt clean
-	rm -rf $(PY_DIR)/.venv $(PY_DIR)/models
-	@echo "✓ Cleaned."
+	rm -rf $(PY_DIR)/models
+	@echo "✓ Local build artifacts cleaned. F:\ drive data preserved."
 
 # ══════════════════════════════════════════════════════════════════
 #  ARCHIVE (external drive — F: /mnt/f/helios-archive)
