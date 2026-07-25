@@ -209,10 +209,20 @@ func (p *Pool) processTask(ctx context.Context, workerID int, task Task, stats *
 // concurrently and writing raw GeoTIFFs plus a scene-level JSON metadata sidecar.
 func (p *Pool) RunScenes(ctx context.Context, scenes []SceneTask) (SceneStats, error) {
 	var stats SceneStats
-	sceneCh := make(chan SceneTask, len(scenes))
+	var pending []SceneTask
+	for _, s := range scenes {
+		parquetPath := filepath.Join(p.outputDir, "landsat", s.SceneID+".parquet")
+		if _, err := os.Stat(parquetPath); err == nil {
+			p.logger.Info("skipping completed scene", "scene", s.SceneID, "parquet", parquetPath)
+			atomic.AddInt64(&stats.ScenesSucceeded, 1)
+			continue
+		}
+		pending = append(pending, s)
+	}
+	sceneCh := make(chan SceneTask, len(pending))
 	var wg sync.WaitGroup
 
-	for _, s := range scenes {
+	for _, s := range pending {
 		sceneCh <- s
 	}
 	close(sceneCh)
