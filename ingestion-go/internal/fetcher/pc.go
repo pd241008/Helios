@@ -50,12 +50,12 @@ type pcSignResult struct {
 	Expiry string `json:"msft:expiry,omitempty"`
 }
 
-// signPCURL calls the Planetary Computer SAS signing endpoint to convert an
+// SignPCURL calls the Planetary Computer SAS signing endpoint to convert an
 // unsigned blob URL into a short-lived signed URL. Works without authentication
 // but is rate-limited (~1 req/s for anonymous access). Returns the retry-after
 // duration on 429 so callers can back off.
-func signPCURL(unsignedURL string) (string, time.Duration, error) {
-	signURL := PCSigningURL + "?href=" + unsignedURL
+func SignPCURL(rawURL string) (string, time.Duration, error) {
+	signURL := PCSigningURL + "?href=" + rawURL
 
 	cli := &http.Client{Timeout: pcSignTimeout}
 	resp, err := cli.Get(signURL)
@@ -142,19 +142,16 @@ func DiscoverPCSplitWindowScenes(ctx context.Context, cfg config.Config) ([]Scen
 	bbox := []float64{cfg.BBox[0], cfg.BBox[1], cfg.BBox[2], cfg.BBox[3]}
 
 	filter := &STACFilter{
-		Op: "in",
+		Op: "and",
 		Args: []any{
-			map[string]string{"property": "id"},
-			[]string{
-				"LC08_L2SP_142051_20161016_02_T1",
-				"LC08_L2SP_142051_20160728_02_T1",
-				"LC08_L2SP_142051_20160423_02_T1",
-				"LC08_L2SP_142051_20160407_02_T1",
-				"LC09_L2SP_142051_20221025_02_T1",
-				"LC08_L2SP_142051_20220526_02_T1",
-				"LC09_L2SP_142051_20220331_02_T1",
-				"LC08_L2SP_142051_20220203_02_T1",
-			},
+			map[string]any{"op": "<", "args": []any{
+				map[string]string{"property": "eo:cloud_cover"},
+				cfg.MaxCloud,
+			}},
+			map[string]any{"op": "in", "args": []any{
+				map[string]string{"property": "platform"},
+				[]string{"landsat-8", "landsat-9"},
+			}},
 		},
 	}
 
@@ -223,34 +220,8 @@ func DiscoverPCSplitWindowScenes(ctx context.Context, cfg config.Config) ([]Scen
 
 			unsignedURL := client.ResolveURL(asset.HRef)
 
-			// Retry signing with exponential backoff, respecting
-			// the Retry-After duration from 429 responses.
-			var signedURL string
-			var signErr error
-			for attempt := 0; attempt < 5; attempt++ {
-				var retryAfter time.Duration
-				signedURL, retryAfter, signErr = signPCURL(unsignedURL)
-				if signErr == nil {
-					break
-				}
-				backoff := 2*time.Second + retryAfter
-				if attempt < 4 {
-					log.Printf("[pc-discovery]   %s/%s: sign attempt %d failed, retrying in %v",
-						f.ID, pcKey, attempt+1, backoff)
-					time.Sleep(backoff)
-				}
-			}
-
-			if signErr != nil {
-				failedCount++
-				log.Printf("[pc-discovery]   %s: CRITICAL signing failed for %s after 5 attempts: %v",
-					f.ID, pcKey, signErr)
-				continue
-			}
-			s.Assets[localName] = signedURL
+			s.Assets[localName] = unsignedURL
 			signedCount++
-			// Delay between successful signing requests to stay under rate limit.
-			time.Sleep(1200 * time.Millisecond)
 		}
 		log.Printf("[pc-discovery]   %s: signed %d/%d required bands (%d failed)",
 			f.ID, signedCount, len(pcAssetMap), failedCount)
@@ -268,8 +239,11 @@ func DiscoverPCSplitWindowScenes(ctx context.Context, cfg config.Config) ([]Scen
 			continue
 		}
 
-		// Try to extract K1/K2 from MTL.json (if signed successfully)
 		if mtlURL, ok := s.Assets["MTL"]; ok {
+			mtlURL, _, err := SignPCURL(mtlURL)
+			if err != nil {
+				continue
+			}
 			mtlData, err := fetchSignedJSON(ctx, mtlURL)
 			if err == nil {
 				mtlInfo := parsePCMTL(mtlData)

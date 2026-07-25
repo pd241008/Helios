@@ -25,6 +25,21 @@ var client = &http.Client{
 func Fetch(ctx context.Context, url string) ([]byte, error) {
 	var lastErr error
 
+	var signedURL string
+	var signErr error
+	for attempt := 0; attempt < 5; attempt++ {
+		var retryAfter time.Duration
+		signedURL, retryAfter, signErr = SignPCURL(url)
+		if signErr == nil {
+			url = signedURL
+			break
+		}
+		time.Sleep(2*time.Second + retryAfter)
+	}
+	if signErr != nil {
+		return nil, fmt.Errorf("failed to sign pc url: %v", signErr)
+	}
+
 	for attempt := range maxRetries {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -59,6 +74,21 @@ func FetchToFile(ctx context.Context, url, destPath string) (int64, error) {
 	defer f.Close()
 
 	var totalWritten int64
+
+	var signedURL string
+	var signErr error
+	for attempt := 0; attempt < 5; attempt++ {
+		var retryAfter time.Duration
+		signedURL, retryAfter, signErr = SignPCURL(url)
+		if signErr == nil {
+			url = signedURL
+			break
+		}
+		time.Sleep(2*time.Second + retryAfter)
+	}
+	if signErr != nil {
+		return 0, fmt.Errorf("failed to sign pc url: %v", signErr)
+	}
 
 	for attempt := range maxRetries {
 		if ctx.Err() != nil {
