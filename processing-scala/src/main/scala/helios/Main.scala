@@ -75,6 +75,12 @@ object Main {
       println(s"  Pixels inside any zone: $totalZoned")
       println(s"  Pixels outside all zones: $outsideAll")
 
+      joined.write
+        .mode("overwrite")
+        .option("compression", "zstd")
+        .parquet(s"${cfg.outputDir}/_intermediate/phase21_joined")
+      println(s"  Saved Phase 2.1 intermediate: ${cfg.outputDir}/_intermediate/phase21_joined")
+
       // ── Phase 2.2: LST Computation
       println("\n═══ Phase 2.2: LST Computation ═══")
       val meta = LSTMath.loadMetadata(spark, metaDir)
@@ -95,6 +101,12 @@ object Main {
         println(s"    ${r.get(0)} = ${r.get(1)}")
       }
 
+      withLST.write
+        .mode("overwrite")
+        .option("compression", "zstd")
+        .parquet(s"${cfg.outputDir}/_intermediate/phase22_with_lst")
+      println(s"  Saved Phase 2.2 intermediate: ${cfg.outputDir}/_intermediate/phase22_with_lst")
+
       // ── Phase 2.3: Target Encoding
       println("\n═══ Phase 2.3: Target Encoding ═══")
       val catCols = Seq("lulc_class", cfg.lulcCategoryCol).distinct
@@ -103,6 +115,15 @@ object Main {
         withLST, targetCol = "lst", catCols = availableCats, smoothing = cfg.targetSmoothing,
       )
       println(s"  Target encoding complete: ${encoded.columns.length} cols")
+
+      encoded.write
+        .mode("overwrite")
+        .option("compression", "zstd")
+        .parquet(s"${cfg.outputDir}/_intermediate/phase23_encoded")
+      println(s"  Saved Phase 2.3 intermediate: ${cfg.outputDir}/_intermediate/phase23_encoded")
+
+      // Unpersist withLST after encoding — no longer needed.
+      withLST.unpersist()
 
       // ── Phase 2.4: Feature Matrix Assembly & Write
       println("\n═══ Phase 2.4: Feature Matrix ═══")
