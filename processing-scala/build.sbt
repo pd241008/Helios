@@ -27,14 +27,15 @@ lazy val root = project
 
     // ── Assembly settings ─────────────────────────────────────────
     assembly / assemblyMergeStrategy := {
-      case PathList("META-INF", _*) => MergeStrategy.discard
-      case _                        => MergeStrategy.first
+      case PathList("META-INF", "services", _*) => MergeStrategy.filterDistinctLines
+      case PathList("META-INF", _*)             => MergeStrategy.discard
+      case _                                    => MergeStrategy.first
     },
 
     // ── JVM options for Spark local mode (Java 17 + Kryo compat) ─
     javaOptions ++= Seq(
-      "-Xmx9g",
-      "-Xms4g",
+      "-Xmx5g",
+      "-Xms3g",
       "-XX:+UseG1GC",
       "-XX:MaxGCPauseMillis=200",
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",

@@ -4,90 +4,137 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
-	"github.com/xitongsys/parquet-go-source/local"
-	"github.com/xitongsys/parquet-go/writer"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/parquet"
+	"github.com/apache/arrow-go/v18/parquet/compress"
+	"github.com/apache/arrow-go/v18/parquet/pqarrow"
 )
+
+var recordSchema = arrow.NewSchema([]arrow.Field{
+	{Name: "tile_id", Type: arrow.BinaryTypes.String},
+	{Name: "lat", Type: arrow.PrimitiveTypes.Float64},
+	{Name: "lon", Type: arrow.PrimitiveTypes.Float64},
+	{Name: "band", Type: arrow.BinaryTypes.String},
+	{Name: "value", Type: arrow.PrimitiveTypes.Float64},
+	{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ms},
+	{Name: "lulc_class", Type: arrow.BinaryTypes.String},
+}, nil)
 
 // WriteRecords serialises a slice of Record into a Parquet file at path.
 // Deprecated: use ParquetStreamWriter for large datasets to avoid OOM.
 func WriteRecords(path string, records []Record) error {
-	if err := os.MkdirAll(workingDir(path), 0o750); err != nil {
-		return fmt.Errorf("mkdir %s: %w", workingDir(path), err)
-	}
-	fw, err := local.NewLocalFileWriter(path)
+	sw, err := NewParquetStreamWriter(path)
 	if err != nil {
-		return fmt.Errorf("create parquet file %s: %w", path, err)
+		return err
 	}
-	defer fw.Close()
-
-	pw, err := writer.NewParquetWriter(fw, new(Record), 1)
-	if err != nil {
-		return fmt.Errorf("init parquet writer: %w", err)
-	}
-	pw.RowGroupSize = 128 * 1024 * 1024 // 128 MB
-	pw.PageSize = 8 * 1024               // 8 KB
-
 	for i := range records {
-		if err := pw.Write(records[i]); err != nil {
-			return fmt.Errorf("write record %d: %w", i, err)
+		if err := sw.Write(records[i]); err != nil {
+			sw.Close()
+			return err
 		}
 	}
-
-	if err := pw.WriteStop(); err != nil {
-		return fmt.Errorf("finalise parquet: %w", err)
-	}
-	return nil
+	return sw.Close()
 }
 
-// ParquetStreamWriter opens a parquet file and accepts records one at a time,
-// avoiding the need to hold all records in memory simultaneously.
+// ParquetStreamWriter opens a parquet file and accepts records one at a time.
 type ParquetStreamWriter struct {
-	fw   io.Closer
-	pw   *writer.ParquetWriter
-	path string
+	fw      io.Closer
+	writer  *pqarrow.FileWriter
+	bldr    *array.RecordBuilder
+	path    string
+	records []Record
 }
 
 // NewParquetStreamWriter creates a streaming writer for Record values.
 func NewParquetStreamWriter(path string) (*ParquetStreamWriter, error) {
-	if err := os.MkdirAll(workingDir(path), 0o750); err != nil {
-		return nil, fmt.Errorf("mkdir %s: %w", workingDir(path), err)
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return nil, fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
 	}
-	fw, err := local.NewLocalFileWriter(path)
+	f, err := os.Create(path)
 	if err != nil {
 		return nil, fmt.Errorf("create parquet file %s: %w", path, err)
 	}
-	pw, err := writer.NewParquetWriter(fw, new(Record), 1)
+
+	props := parquet.NewWriterProperties(
+		parquet.WithCompression(compress.Codecs.Snappy),
+	)
+	arrProps := pqarrow.DefaultWriterProps()
+
+	w, err := pqarrow.NewFileWriter(recordSchema, f, props, arrProps)
 	if err != nil {
-		fw.Close()
+		f.Close()
 		return nil, fmt.Errorf("init parquet writer: %w", err)
 	}
-	pw.RowGroupSize = 128 * 1024 * 1024 // 128 MB
-	pw.PageSize = 8 * 1024               // 8 KB
-	return &ParquetStreamWriter{fw: fw, pw: pw, path: path}, nil
+
+	bldr := array.NewRecordBuilder(memory.DefaultAllocator, recordSchema)
+
+	return &ParquetStreamWriter{
+		fw:      f,
+		writer:  w,
+		bldr:    bldr,
+		path:    path,
+		records: make([]Record, 0, 8192),
+	}, nil
 }
 
-// Write appends a single record to the parquet file.
+// Write appends a single record to the parquet file buffer, flushing as needed.
 func (s *ParquetStreamWriter) Write(rec Record) error {
-	return s.pw.Write(rec)
+	s.records = append(s.records, rec)
+	if len(s.records) >= 8192 {
+		return s.flush()
+	}
+	return nil
+}
+
+func (s *ParquetStreamWriter) flush() error {
+	if len(s.records) == 0 {
+		return nil
+	}
+
+	b0 := s.bldr.Field(0).(*array.StringBuilder)
+	b1 := s.bldr.Field(1).(*array.Float64Builder)
+	b2 := s.bldr.Field(2).(*array.Float64Builder)
+	b3 := s.bldr.Field(3).(*array.StringBuilder)
+	b4 := s.bldr.Field(4).(*array.Float64Builder)
+	b5 := s.bldr.Field(5).(*array.TimestampBuilder)
+	b6 := s.bldr.Field(6).(*array.StringBuilder)
+
+	for _, r := range s.records {
+		b0.Append(r.TileID)
+		b1.Append(r.Lat)
+		b2.Append(r.Lon)
+		b3.Append(r.Band)
+		b4.Append(r.Value)
+		b5.Append(arrow.Timestamp(r.Timestamp))
+		b6.Append(r.LULCClass)
+	}
+
+	rec := s.bldr.NewRecord()
+	defer rec.Release()
+
+	if err := s.writer.Write(rec); err != nil {
+		return err
+	}
+
+	s.records = s.records[:0]
+	return nil
 }
 
 // Close finalises the parquet file. Must be called after all records are written.
 func (s *ParquetStreamWriter) Close() error {
-	if err := s.pw.WriteStop(); err != nil {
+	if err := s.flush(); err != nil {
+		s.writer.Close()
 		s.fw.Close()
-		return fmt.Errorf("finalise parquet %s: %w", s.path, err)
+		return fmt.Errorf("flush remaining: %w", err)
 	}
-	return s.fw.Close()
-}
-
-func workingDir(path string) string {
-	idx := len(path) - 1
-	for idx >= 0 && path[idx] != '/' && path[idx] != '\\' {
-		idx--
+	if err := s.writer.Close(); err != nil {
+		s.fw.Close()
+		return fmt.Errorf("close parquet writer: %w", err)
 	}
-	if idx < 0 {
-		return "."
-	}
-	return path[:idx]
+	s.fw.Close()
+	return nil
 }

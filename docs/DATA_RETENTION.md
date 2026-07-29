@@ -107,13 +107,11 @@ Validated artifacts are synced to an external drive via `rsync`:
 - Total: 931.5 GB, ~276 GB free (as of 2026-07-15)
 - WSL2 auto-mount: run `mount -t drvfs F: /mnt/f` if F: is not visible after WSL restart
 
-**Post-validation workflow:**
-1. Ingest → validate PAR1 footer → parquet goes to `staging/raw/landsat/`
-2. Run `make archive` → rsync copies to external drive (never deletes from local)
-3. Local `staging/` is safe to clean with `make clean` after archiving
-
-**Do NOT use `mv` — always `rsync`** so local staging remains usable for
-immediate downstream steps (Stage 2 processing, ML training).
+**10-Year Ingestion Workflow:**
+1. **Ingest**: Direct the Go ingestion worker's output (`--output-dir`) to `/mnt/f/helios-archive/staging/raw` or run frequent `make archive` syncs. The local SSD is too small to hold 270 GB of raw parquet permanently.
+2. **Process (Spark)**: Keep Spark local scratch and shuffle directories (`spark.local.dir`) on the local SSD for fast I/O. Do NOT run Spark shuffle against the USB-attached external drive.
+3. **Train (Python)**: ML training and report generation will pull from the archive (or the `make archive` synced copies) and save models/reports to `reports/`, which are then archived.
+4. **Cleanup**: Transient work (like Spark temp files) remains local and is cleaned up automatically, leaving only the validated long-lived data on `/mnt/f/helios-archive/`.
 
 ### Archive disk budget
 

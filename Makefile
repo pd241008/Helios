@@ -12,7 +12,7 @@ ROOT_DIR    := $(shell pwd)
 GO_DIR      := $(ROOT_DIR)/ingestion-go
 SCALA_DIR   := $(ROOT_DIR)/processing-scala
 PY_DIR      := $(ROOT_DIR)/ml-python
-STAGING_DIR := $(ROOT_DIR)/staging
+STAGING_DIR := /mnt/f/helios-archive/staging
 
 # ── External drive (F: / 931 GB, "Personal Use") ─────────────────
 ARCHIVE_DIR := /mnt/f/helios-archive
@@ -56,9 +56,9 @@ ingest: $(STAGING_DIR)/raw ## Run Go ingestion worker pool
 		--output-dir $(STAGING_DIR)/raw \
 		--stac-url https://planetarycomputer.microsoft.com/api/stac/v1 \
 		--bbox 79.9469,12.8,80.345,13.23 \
-		--start-year 2023 --end-year 2023 \
-		--max-cloud 10 \
-		--workers 8
+		--start-year 2016 --end-year 2026 \
+		--max-cloud 30 \
+		--workers 4
 	@echo "✓ Raw parquet files written to $(STAGING_DIR)/raw"
 
 process: $(STAGING_DIR)/dense ## Run Scala/Spark aggregation
@@ -102,37 +102,41 @@ test: ## Run tests across all languages
 #  CLEANUP
 # ══════════════════════════════════════════════════════════════════
 
-clean: ## Remove all build artifacts and staging data
-	rm -rf $(STAGING_DIR)
+clean: ## Remove local build artifacts only (preserves F:\ drive staging data)
+	rm -rf $(GO_DIR)/bin $(SCALA_DIR)/target $(PY_DIR)/.venv $(PY_DIR)/__pycache__ $(PY_DIR)/.pytest_cache
 	cd $(GO_DIR)    && go clean -cache
 	cd $(SCALA_DIR) && sbt clean
-	rm -rf $(PY_DIR)/.venv $(PY_DIR)/models
-	@echo "✓ Cleaned."
+	rm -rf $(PY_DIR)/models
+	@echo "✓ Local build artifacts cleaned. F:\ drive data preserved."
 
 # ══════════════════════════════════════════════════════════════════
 #  ARCHIVE (external drive — F: /mnt/f/helios-archive)
 # ══════════════════════════════════════════════════════════════════
 
-archive-raw: ## Sync raw parquet to external drive
+mount-check: ## Verify external drive is actually mounted (prevents local aliasing)
+	@mount | grep -q "/mnt/f type 9p" || mount | grep -q "/mnt/f type drvfs" || \
+		(echo "ERROR: /mnt/f is not mounted as a remote filesystem! Run 'sudo mount -t drvfs F: /mnt/f' first." && exit 1)
+
+archive-raw: mount-check ## Sync raw parquet to external drive
 	@echo "═══ Archiving raw parquet → $(ARCHIVE_DIR)/staging/raw/ ═══"
 	@mkdir -p $(ARCHIVE_DIR)/staging/raw/landsat
 	rsync -av $(STAGING_DIR)/raw/landsat/*.parquet $(ARCHIVE_DIR)/staging/raw/landsat/
 	rsync -av $(STAGING_DIR)/raw/zoning.geojson $(ARCHIVE_DIR)/staging/raw/ 2>/dev/null || true
 	@echo "✓ Raw archived."
 
-archive-dense: ## Sync dense matrices to external drive
+archive-dense: mount-check ## Sync dense matrices to external drive
 	@echo "═══ Archiving dense matrix → $(ARCHIVE_DIR)/staging/dense/ ═══"
 	@mkdir -p $(ARCHIVE_DIR)/staging/dense
 	rsync -av $(STAGING_DIR)/dense/ $(ARCHIVE_DIR)/staging/dense/
 	@echo "✓ Dense archived."
 
-archive-reports: ## Sync ML reports to external drive
+archive-reports: mount-check ## Sync ML reports to external drive
 	@echo "═══ Archiving reports → $(ARCHIVE_DIR)/reports/ ═══"
 	@mkdir -p $(ARCHIVE_DIR)/reports
 	rsync -av $(PY_DIR)/reports/ $(ARCHIVE_DIR)/reports/
 	@echo "✓ Reports archived."
 
-archive: archive-raw archive-dense archive-reports ## Sync all validated data to external drive
+archive: mount-check archive-raw archive-dense archive-reports ## Sync all validated data to external drive
 	@echo "════════════════════════════════════════"
 	@echo "  Archive sync complete."
 	@echo "  Target: $(ARCHIVE_DIR)"

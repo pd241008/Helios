@@ -1,9 +1,9 @@
 package helios
 
 case class PipelineConfig(
-  inputDir:              String = "./staging/raw",
-  outputDir:             String = "./staging/dense",
-  zoningPath:            String = "./staging/raw/zoning.geojson",
+  inputDir:              String = "/mnt/f/helios-archive/staging/raw",
+  outputDir:             String = "/mnt/f/helios-archive/staging/dense",
+  zoningPath:            String = "/mnt/f/helios-archive/staging/raw/zoning.geojson",
   metadataDir:           String = "",
   lulcCategoryCol:       String = "zoning_category",
   ndviSoil:              Double = 0.2,

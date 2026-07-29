@@ -31,6 +31,7 @@ REQUIRED_COLS: tuple[str, ...] = (
     "lst",
     "split",
     "year",
+    "doy",
 )
 
 

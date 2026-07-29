@@ -101,6 +101,7 @@ def shap_dependence_plots(
     X_test: np.ndarray,
     feature_names: list[str],
     out_dir: str | Path = "./reports",
+    random_seed: int = 42,
 ) -> None:
     """Generate SHAP dependence plots for key physical features.
 
@@ -128,8 +129,18 @@ def shap_dependence_plots(
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
 
+    # Downsample for SHAP to prevent OOM/timeouts on full-res runs
+    max_shap_rows = 10000
+    if len(X_test) > max_shap_rows:
+        np.random.seed(random_seed) # fixed seed for reproducibility
+        idx = np.random.choice(len(X_test), size=max_shap_rows, replace=False)
+        X_shap = X_test[idx]
+        print(f"  Downsampling SHAP input from {len(X_test)} to {max_shap_rows} rows.")
+    else:
+        X_shap = X_test
+
     explainer = _shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(X_test)
+    shap_values = explainer.shap_values(X_shap)
 
     key_features = ["bt10_minus_bt11", "ndvi", "zoning_category_encoded"]
     present = [f for f in key_features if f in feature_names]
@@ -137,7 +148,7 @@ def shap_dependence_plots(
     for feat in present:
         idx = feature_names.index(feat)
         _shap.dependence_plot(
-            idx, shap_values, X_test,
+            idx, shap_values, X_shap,
             feature_names=feature_names, show=False,
         )
         fig_path = out_path / f"shap_dependence_{feat}.png"
@@ -147,7 +158,7 @@ def shap_dependence_plots(
 
     # Summary bar plot (top-10).
     _shap.summary_plot(
-        shap_values, X_test, feature_names=feature_names,
+        shap_values, X_shap, feature_names=feature_names,
         plot_type="bar", show=False,
     )
     fig_path = out_path / "shap_summary_bar.png"
@@ -157,7 +168,7 @@ def shap_dependence_plots(
 
     # Summary dot plot.
     _shap.summary_plot(
-        shap_values, X_test, feature_names=feature_names, show=False,
+        shap_values, X_shap, feature_names=feature_names, show=False,
     )
     fig_path = out_path / "shap_summary_dot.png"
     plt.savefig(str(fig_path), dpi=150, bbox_inches="tight")

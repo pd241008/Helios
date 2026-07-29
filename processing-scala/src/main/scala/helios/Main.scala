@@ -41,7 +41,7 @@ object Main {
       .config("spark.sql.shuffle.spill.compress", "true")
       .getOrCreate()
 
-    spark.sparkContext.setLogLevel("WARN")
+    // spark.sparkContext.setLogLevel("WARN")
 
     SedonaSQLRegistrator.registerAll(spark)
 
