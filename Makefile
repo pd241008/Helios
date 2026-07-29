@@ -72,7 +72,7 @@ train: ## Run Python ML training
 	@echo "═══ Stage 3: Training (Python/XGBoost) ═══"
 	cd $(PY_DIR) && uv run python -m helios_ml.train \
 		--data-dir $(STAGING_DIR)/dense \
-		--model-out $(PY_DIR)/models/lst_model.json
+		--reports-dir /mnt/f/helios-archive/metrics
 	@echo "✓ Model saved."
 
 # ══════════════════════════════════════════════════════════════════
