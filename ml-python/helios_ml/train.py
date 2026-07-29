@@ -114,7 +114,7 @@ def train(
 
     # ── Leakage & noise guard ──────────────────────────────────────
     # Columns that are non-feature identifiers or metadata.
-    NON_FEATURE_COLS = ("tile_id", "year", "doy", "split", "has_thermal_split")
+    NON_FEATURE_COLS = ("tile_id", "year", "month", "timestamp", "doy", "split", "has_thermal_split", "lulc_class", "lulc_count")
 
     # ST_B10 is the EXACT COPY of the target `lst` when no split-window
     # thermal bands are available (PC L2 source).  Including it would
