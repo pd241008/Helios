@@ -98,6 +98,7 @@ def eval_baseline_lst_single_channel(
 
 def shap_dependence_plots(
     model,
+    model_name: str,
     X_test: np.ndarray,
     feature_names: list[str],
     out_dir: str | Path = "./reports",
@@ -139,38 +140,75 @@ def shap_dependence_plots(
     else:
         X_shap = X_test
 
-    explainer = _shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(X_shap)
+    try:
+        # If the model is wrapped in a pipeline (e.g. for SimpleImputer), extract the underlying estimator
+        base_model = model.named_steps["model"] if hasattr(model, "named_steps") else model
+        explainer = _shap.TreeExplainer(base_model)
+        # We also need to transform X_shap if it's a pipeline
+        if hasattr(model, "named_steps"):
+            X_shap_transformed = model[:-1].transform(X_shap)
+        else:
+            X_shap_transformed = X_shap
+            
+        shap_values = explainer.shap_values(X_shap_transformed)
+    except Exception as e:
+        import traceback
+        err_file = Path(out_dir) / f"shap_error_{model_name.replace(' ', '_').lower()}.log"
+        with open(err_file, "w") as f:
+            f.write(traceback.format_exc())
+        print(f"  [yellow]Failed to run TreeExplainer for {model_name}: {e}. Full traceback saved to {err_file}[/yellow]")
+        return
 
     key_features = ["bt10_minus_bt11", "ndvi", "zoning_category_encoded"]
     present = [f for f in key_features if f in feature_names]
 
+    safe_name = model_name.replace(" ", "_").replace("(", "").replace(")", "").lower()
     for feat in present:
         idx = feature_names.index(feat)
+        plt.figure() # Explicitly create a new figure
         _shap.dependence_plot(
             idx, shap_values, X_shap,
             feature_names=feature_names, show=False,
         )
-        fig_path = out_path / f"shap_dependence_{feat}.png"
+        fig_path = out_path / f"shap_dependence_{feat}_{safe_name}.png"
         plt.savefig(str(fig_path), dpi=150, bbox_inches="tight")
-        plt.close()
+        plt.clf()
+        plt.close("all") # Explicitly close all figures to prevent any cross-plot contamination
         print(f"  SHAP dependence ({feat}): {fig_path}")
 
     # Summary bar plot (top-10).
+    plt.figure()
     _shap.summary_plot(
         shap_values, X_shap, feature_names=feature_names,
         plot_type="bar", show=False,
     )
-    fig_path = out_path / "shap_summary_bar.png"
+    fig_path = out_path / f"shap_summary_bar_{safe_name}.png"
     plt.savefig(str(fig_path), dpi=150, bbox_inches="tight")
-    plt.close()
+    plt.clf()
+    plt.close("all")
     print(f"  SHAP summary bar: {fig_path}")
 
     # Summary dot plot.
+    plt.figure()
     _shap.summary_plot(
         shap_values, X_shap, feature_names=feature_names, show=False,
     )
-    fig_path = out_path / "shap_summary_dot.png"
+    fig_path = out_path / f"shap_summary_dot_{safe_name}.png"
     plt.savefig(str(fig_path), dpi=150, bbox_inches="tight")
-    plt.close()
+    plt.clf()
+    plt.close("all")
     print(f"  SHAP summary dot: {fig_path}")
+
+def print_comparison_table(results: dict[str, dict[str, float]], console: Console) -> None:
+    """Render comparison metrics across all models in a single Rich table."""
+    table = Table(title="[bold]Ensemble & Individual Model Evaluation[/bold]", show_header=True, header_style="bold magenta")
+    table.add_column("Model Configuration", style="cyan")
+    table.add_column("MAE (°C)", justify="right", style="green")
+    table.add_column("RMSE (°C)", justify="right", style="green")
+    table.add_column("R² Score", justify="right", style="green")
+
+    for model_name, metrics in results.items():
+        name = f"[bold white]{model_name}[/bold white]" if "Ensemble" in model_name else model_name
+        table.add_row(name, f"{metrics['mae']:.4f}", f"{metrics['rmse']:.4f}", f"{metrics['r2']:.4f}")
+
+    console.print(table)

@@ -19,6 +19,8 @@ dependencies = [
     "folium>=0.16.0",
     "plotly>=5.20.0",
     "duckdb>=1.5.5",
+    "lightgbm>=4.3.0",
+    "catboost>=1.2.0",
 ]
 
 # NOTE: geemap and earthengine-api are required for Track A (GEE heatmaps)

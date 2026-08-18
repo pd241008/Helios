@@ -31,6 +31,7 @@ func main() {
 	pcSource := flag.Bool("pc-source", false, "Use Microsoft Planetary Computer as STAC source instead of USGS LandsatLook")
 	lulcShapefile := flag.String("lulc-shapefile", "", "Path to .shp shapefile for LULC features")
 	lulcGeoJSON := flag.String("lulc-geojson", "", "Path to .geojson file for LULC features")
+	limit := flag.Int("limit", 500, "Max scenes to fetch from STAC")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -67,6 +68,7 @@ func main() {
 		RetryAttempts:    3,
 		RetryBackoff:     500 * time.Millisecond,
 		StagingDir:       absOut,
+		Limit:            *limit,
 	}
 
 	// ── Phase 1.2: Vector data processing (Shapefile / GeoJSON) ──
