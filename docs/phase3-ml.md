@@ -68,6 +68,10 @@ test  = df.filter(pl.col("year") == 2023)
 
 **Feature matrix (X):** `["lulc_encoded", "lulc_count", "ndvi", "month", "lat", "lon"]`
 
+> [!IMPORTANT]
+> **Data Leakage Guard**
+> The target variable (LST) is derived directly from thermal bands. You **MUST NOT** include `ST_B10`, `bt10`, `bt11`, or `bt10_minus_bt11` in the feature matrix, otherwise the model will achieve an artificial R² of 1.0. A hardcoded leakage guard in `train.py` actively strips these out. See ADR-001.
+
 **Target (y):** `"lst_k"`
 
 **Model configuration:**
@@ -123,6 +127,10 @@ importances = model.feature_importances_
 for name, imp in zip(feature_names, importances):
     print(f"{name}: {imp:.4f}")
 ```
+
+> [!NOTE]
+> **SHAP Silent Failures**
+> Generating SHAP plots on a 25M-row matrix can occasionally cause the `TreeExplainer` C-extensions to crash (OOM). If SHAP plots are missing from the output directory, check `shap_error_traceback.log` for the silent failure stack trace. See ADR-003.
 
 Expected finding: `lulc_encoded` and `ndvi` are the top two predictors, demonstrating that local zoning data is critical for urban heat island prediction.
 
