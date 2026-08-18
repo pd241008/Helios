@@ -145,14 +145,18 @@ def shap_dependence_plots(
         base_model = model.named_steps["model"] if hasattr(model, "named_steps") else model
         explainer = _shap.TreeExplainer(base_model)
         # We also need to transform X_shap if it's a pipeline
-        if hasattr(model, "transform"):
+        if hasattr(model, "named_steps"):
             X_shap_transformed = model[:-1].transform(X_shap)
         else:
             X_shap_transformed = X_shap
             
         shap_values = explainer.shap_values(X_shap_transformed)
     except Exception as e:
-        print(f"  [yellow]Failed to run TreeExplainer for {model_name}: {e}[/yellow]")
+        import traceback
+        err_file = Path(out_dir) / f"shap_error_{model_name.replace(' ', '_').lower()}.log"
+        with open(err_file, "w") as f:
+            f.write(traceback.format_exc())
+        print(f"  [yellow]Failed to run TreeExplainer for {model_name}: {e}. Full traceback saved to {err_file}[/yellow]")
         return
 
     key_features = ["bt10_minus_bt11", "ndvi", "zoning_category_encoded"]
@@ -161,32 +165,38 @@ def shap_dependence_plots(
     safe_name = model_name.replace(" ", "_").replace("(", "").replace(")", "").lower()
     for feat in present:
         idx = feature_names.index(feat)
+        plt.figure() # Explicitly create a new figure
         _shap.dependence_plot(
             idx, shap_values, X_shap,
             feature_names=feature_names, show=False,
         )
         fig_path = out_path / f"shap_dependence_{feat}_{safe_name}.png"
         plt.savefig(str(fig_path), dpi=150, bbox_inches="tight")
-        plt.close()
+        plt.clf()
+        plt.close("all") # Explicitly close all figures to prevent any cross-plot contamination
         print(f"  SHAP dependence ({feat}): {fig_path}")
 
     # Summary bar plot (top-10).
+    plt.figure()
     _shap.summary_plot(
         shap_values, X_shap, feature_names=feature_names,
         plot_type="bar", show=False,
     )
     fig_path = out_path / f"shap_summary_bar_{safe_name}.png"
     plt.savefig(str(fig_path), dpi=150, bbox_inches="tight")
-    plt.close()
+    plt.clf()
+    plt.close("all")
     print(f"  SHAP summary bar: {fig_path}")
 
     # Summary dot plot.
+    plt.figure()
     _shap.summary_plot(
         shap_values, X_shap, feature_names=feature_names, show=False,
     )
     fig_path = out_path / f"shap_summary_dot_{safe_name}.png"
     plt.savefig(str(fig_path), dpi=150, bbox_inches="tight")
-    plt.close()
+    plt.clf()
+    plt.close("all")
     print(f"  SHAP summary dot: {fig_path}")
 
 def print_comparison_table(results: dict[str, dict[str, float]], console: Console) -> None:
