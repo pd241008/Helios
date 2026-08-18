@@ -119,6 +119,12 @@ func (s *STACClient) Search(ctx context.Context, req STACSearchRequest) ([]STACF
 		}
 
 		features = append(features, resp.Features...)
+		
+		if req.Limit > 0 && len(features) >= req.Limit {
+			features = features[:req.Limit]
+			fmt.Printf("[stac] page %d: reached total limit %d, stopping pagination\n", page, req.Limit)
+			break
+		}
 
 		nextURL := ""
 		for _, link := range resp.Links {
