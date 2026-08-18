@@ -7,14 +7,11 @@ import org.apache.spark.storage.StorageLevel
 
 object SpatialJoin {
 
-  // Chennai AOI bounding box — same coordinates used throughout the pipeline
-  // (Go ingestion --bbox, Makefile, Python analysis scripts).
-  // All zone polygons lie within this box, so any pixel outside it is
-  // guaranteed to be discarded by the spatial join's INNER filter.
-  val CHENNAI_BBOX_LON_MIN = 79.9469
-  val CHENNAI_BBOX_LON_MAX = 80.3450
-  val CHENNAI_BBOX_LAT_MIN = 12.8000
-  val CHENNAI_BBOX_LAT_MAX = 13.2300
+  // Bangalore AOI bounding box
+  val BBOX_LON_MIN = 77.34
+  val BBOX_LON_MAX = 77.90
+  val BBOX_LAT_MIN = 12.83
+  val BBOX_LAT_MAX = 13.16
 
   def pivotBands(df: DataFrame): DataFrame = {
     val pivoted = df
@@ -129,8 +126,8 @@ object SpatialJoin {
     //     target encoding's global mean, feature matrix all operate
     //     on zone-matched pixels only).
     //   • The spatial join's INNER filter would discard them anyway.
-    val inBbox = col("lon").between(CHENNAI_BBOX_LON_MIN, CHENNAI_BBOX_LON_MAX) &&
-                 col("lat").between(CHENNAI_BBOX_LAT_MIN, CHENNAI_BBOX_LAT_MAX)
+    val inBbox = col("lon").between(BBOX_LON_MIN, BBOX_LON_MAX) &&
+                 col("lat").between(BBOX_LAT_MIN, BBOX_LAT_MAX)
     val filtered = sampled.filter(inBbox)
 
     // ── STAGE COUNT 0: raw parquet load ──────────────────────────
@@ -169,11 +166,8 @@ object SpatialJoin {
     val joined = spatialJoin(pivoted, zones, categoryCol)
     // Cache the join result — it will be used 3 times downstream
     // (zone distribution count, LST computation, and diagnostics).
-    // MEMORY_AND_DISK_SER serializes to reduce memory footprint.
-    joined.persist(StorageLevel.MEMORY_AND_DISK_SER)
     val numJoined = joined.count()
     println(s"  Spatial join result (inside zones): $numJoined rows")
-    println(s"  Spatial join result cached (MEMORY_AND_DISK_SER)")
 
     joined
   }

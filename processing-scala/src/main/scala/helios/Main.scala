@@ -106,9 +106,6 @@ object Main {
           println(s"  Scene metadata files loaded: $metaCount")
           withLST = LSTMath.computeLST(joined, meta, cfg)
           
-          try { joined.unpersist() } catch { case _: Throwable => }
-
-          withLST.cache()
           val lstCount = withLST.count()
           println(s"  LST computed: $lstCount rows")
 
@@ -125,8 +122,6 @@ object Main {
           println(s"  Saved Phase 2.2 intermediate: $p22Path")
         }
 
-        withLST.cache()
-
         println("\n═══ Phase 2.3: Target Encoding ═══")
         val catCols = Seq("lulc_class", cfg.lulcCategoryCol).distinct
         val availableCats = catCols.filter(withLST.columns.contains)
@@ -141,7 +136,6 @@ object Main {
           .parquet(p23Path)
         println(s"  Saved Phase 2.3 intermediate: $p23Path")
 
-        withLST.unpersist()
       }
 
 

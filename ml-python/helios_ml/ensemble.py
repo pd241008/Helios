@@ -34,7 +34,10 @@ def get_base_models(seed: int) -> list[tuple[str, any]]:
         ("XGBoost (Base)", XGBRegressor(tree_method="hist", random_state=seed, n_jobs=-1)),
         ("LightGBM (Base)", LGBMRegressor(random_state=seed, n_jobs=-1, verbose=-1)),
         ("CatBoost (Base)", CatBoostRegressor(random_state=seed, verbose=0, thread_count=-1)),
-        ("GradientBoost (Base)", HistGradientBoostingRegressor(random_state=seed)),
+        ("GradientBoost (Base)", Pipeline([
+            ("imputer", SimpleImputer(strategy="median", keep_empty_features=True)),
+            ("model", HistGradientBoostingRegressor(random_state=seed))
+        ])),
     ]
 
 
@@ -62,10 +65,13 @@ def get_tuned_models(seed: int) -> list[tuple[str, any]]:
             iterations=500, depth=8, learning_rate=0.05, 
             subsample=0.8, random_state=seed, verbose=0, thread_count=-1
         )),
-        ("GradientBoost (Tuned)", HistGradientBoostingRegressor(
-            max_iter=100, max_depth=5, learning_rate=0.1, 
-            random_state=seed
-        )),
+        ("GradientBoost (Tuned)", Pipeline([
+            ("imputer", SimpleImputer(strategy="median", keep_empty_features=True)),
+            ("model", HistGradientBoostingRegressor(
+                max_iter=100, max_depth=5, learning_rate=0.1, 
+                random_state=seed
+            ))
+        ])),
     ]
 
 
@@ -117,7 +123,8 @@ def train_ensemble(
     NON_FEATURE_COLS = ("tile_id", "year", "month", "timestamp", "doy", "split", "has_thermal_split", "lulc_class", "lulc_count")
     LEAKAGE_COLS = ("ST_B10",)
     NULL_COLS = ("bt10", "bt11", "bt10_minus_bt11")
-    DROP_COLS = NON_FEATURE_COLS + LEAKAGE_COLS + NULL_COLS
+    EXCLUDE_FEATURES = ("pv", "eps10", "eps11", "ndbi")
+    DROP_COLS = NON_FEATURE_COLS + LEAKAGE_COLS + NULL_COLS + EXCLUDE_FEATURES
 
     drop_train = [c for c in DROP_COLS if c in X_train_df.columns]
     drop_test = [c for c in DROP_COLS if c in X_test_df.columns]
@@ -141,11 +148,23 @@ def train_ensemble(
     base_ensemble = VotingRegressor(estimators=base_estimators, n_jobs=-1)
     tuned_ensemble = VotingRegressor(estimators=tuned_estimators, n_jobs=-1)
 
+    metrics_path = reports_path / "ensemble_metrics.json"
     all_results = {}
+    if metrics_path.exists():
+        try:
+            with open(metrics_path, "r") as f:
+                all_results = json.load(f)
+            console.print(f"[bold green]  Loaded checkpoint with {len(all_results)} completed models.[/bold green]")
+        except Exception:
+            pass
     
     console.print("[bold]3. Training & Evaluation[/bold]")
     
     def train_and_eval(name: str, model, is_ensemble: bool = False):
+        if name in all_results:
+            console.print(f"  [yellow]Skipping {name} (already in checkpoint)[/yellow]")
+            return
+
         t0 = time.perf_counter()
         console.print(f"  Training {name}...")
         
@@ -153,8 +172,11 @@ def train_ensemble(
         model.fit(X_train, y_train_arr)
         
         elapsed = time.perf_counter() - t0
-        preds = model.predict(X_test)
-        metrics = evaluate_model(y_test_arr, preds)
+        if len(X_test) == 0:
+            metrics = {"mae": float("nan"), "rmse": float("nan"), "r2": float("nan"), "mape_pct": float("nan")}
+        else:
+            preds = model.predict(X_test)
+            metrics = evaluate_model(y_test_arr, preds)
         
         console.print(f"    ✓ Done in {elapsed:.1f}s | RMSE: {metrics['rmse']:.3f} | R²: {metrics['r2']:.3f}")
         all_results[name] = metrics
@@ -162,7 +184,12 @@ def train_ensemble(
         # Generate SHAP for individual models only
         if not is_ensemble:
             console.print(f"    Generating SHAP for {name}...")
-            shap_dependence_plots(model, name, X_test, feature_names, str(reports_path), random_seed)
+            shap_data = X_test if len(X_test) > 0 else X_train[:1000]
+            shap_dependence_plots(model, name, shap_data, feature_names, str(reports_path), random_seed)
+
+        # Checkpoint to disk immediately
+        with open(metrics_path, "w") as f:
+            json.dump(all_results, f, indent=2)
 
     # Base Models
     for name, model in base_estimators:
@@ -177,10 +204,6 @@ def train_ensemble(
     # 6. Final Report
     console.print("\n[bold cyan]Final Results[/bold cyan]")
     print_comparison_table(all_results, console)
-
-    metrics_path = reports_path / "ensemble_metrics.json"
-    with open(metrics_path, "w") as f:
-        json.dump(all_results, f, indent=2)
 
     console.print(f"\n[bold green]═══ Pipeline complete ═══[/bold green]")
 

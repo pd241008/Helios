@@ -61,11 +61,28 @@ ingest: $(STAGING_DIR)/raw ## Run Go ingestion worker pool
 		--workers 4
 	@echo "✓ Raw parquet files written to $(STAGING_DIR)/raw"
 
+ingest-bangalore: ## Prep Bangalore Data Download
+	@echo "═══ Stage 1: Ingestion (Go) [Bangalore] ═══"
+	@mkdir -p /mnt/f/helios-archive-bangalore/staging/raw
+	cd $(GO_DIR) && go run ./cmd/ingest \
+		--output-dir /mnt/f/helios-archive-bangalore/staging/raw \
+		--stac-url https://planetarycomputer.microsoft.com/api/stac/v1 \
+		--bbox 77.34,12.83,77.90,13.16 \
+		--start-year 2016 --end-year 2026 \
+		--max-cloud 30 \
+		--workers 4
+	@echo "✓ Bangalore raw parquet files written to /mnt/f/helios-archive-bangalore/staging/raw"
+
 process: $(STAGING_DIR)/dense ## Run Scala/Spark aggregation
 	@echo "═══ Stage 2: Processing (Scala/Spark) ═══"
-	cd $(SCALA_DIR) && sbt "runMain helios.Main \
+	cd $(SCALA_DIR) && java -Xmx6g --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED -cp target/scala-2.13/helios-processing-assembly-0.1.0.jar helios.Main \
 		--input $(STAGING_DIR)/raw \
-		--output $(STAGING_DIR)/dense"
+		--output $(STAGING_DIR)/dense \
+		--zoning-path $(STAGING_DIR)/raw/zoning.geojson \
+		--train-year-start 2016 \
+		--train-year-end 2024 \
+		--test-year-start 2025 \
+		--test-year-end 2026
 	@echo "✓ Dense matrix written to $(STAGING_DIR)/dense"
 
 train: ## Run Python ML training
@@ -74,6 +91,30 @@ train: ## Run Python ML training
 		--data-dir $(STAGING_DIR)/dense \
 		--reports-dir /mnt/f/helios-archive/metrics
 	@echo "✓ Model saved."
+
+# ══════════════════════════════════════════════════════════════════
+#  AB TEST TARGETS (Isolated Baseline Run)
+# ══════════════════════════════════════════════════════════════════
+
+process-abtest: ## Run Scala/Spark aggregation on the 60G baseline data to generate strict 25.1M row matrix with new features
+	@echo "═══ Stage 2: Processing (AB Test Baseline) ═══"
+	@mkdir -p /mnt/f/helios-archive-baseline/staging/tmp
+	cd $(SCALA_DIR) && java -Xmx6g -Dspark.local.dir=/mnt/f/helios-archive-baseline/staging/tmp --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED -cp target/scala-2.13/helios-processing-assembly-0.1.0.jar helios.Main \
+		--input /mnt/f/helios-archive-baseline/staging/raw \
+		--output /mnt/f/helios-archive-baseline/staging/dense_abtest \
+		--zoning-path /mnt/f/helios-archive-baseline/staging/raw/zoning.geojson \
+		--train-year-start 2016 \
+		--train-year-end 2024 \
+		--test-year-start 2025 \
+		--test-year-end 2026
+	@echo "✓ Strict AB-test Dense matrix written to /mnt/f/helios-archive-baseline/staging/dense_abtest"
+
+train-abtest: ## Run Python ML training on the strict AB test baseline matrix
+	@echo "═══ Stage 3: Training (AB Test Baseline) ═══"
+	cd $(PY_DIR) && uv run python -m helios_ml.train \
+		--data-dir /mnt/f/helios-archive-baseline/staging/dense_abtest \
+		--reports-dir /mnt/f/helios-archive-baseline/metrics_abtest
+	@echo "✓ AB test Model saved."
 
 # ══════════════════════════════════════════════════════════════════
 #  COMPOSITE TARGETS
