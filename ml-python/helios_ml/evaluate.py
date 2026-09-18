@@ -16,6 +16,8 @@ from rich.console import Console
 from rich.table import Table
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
+SHAP_MAX_ROWS = 10000
+
 
 def evaluate_model(
     y_true: np.ndarray,
@@ -131,7 +133,7 @@ def shap_dependence_plots(
     out_path.mkdir(parents=True, exist_ok=True)
 
     # Downsample for SHAP to prevent OOM/timeouts on full-res runs
-    max_shap_rows = 10000
+    max_shap_rows = SHAP_MAX_ROWS
     if len(X_test) > max_shap_rows:
         np.random.seed(random_seed) # fixed seed for reproducibility
         idx = np.random.choice(len(X_test), size=max_shap_rows, replace=False)
@@ -143,7 +145,22 @@ def shap_dependence_plots(
     try:
         # If the model is wrapped in a pipeline (e.g. for SimpleImputer), extract the underlying estimator
         base_model = model.named_steps["model"] if hasattr(model, "named_steps") else model
-        explainer = _shap.TreeExplainer(base_model)
+        # Workaround for XGBoost 2.1.0+ and SHAP TreeExplainer base_score parsing bug.
+        # SHAP reads base_score from the booster's internal config (not save_raw), so
+        # we must patch it via save_config/load_config to mutate the in-memory C++ object.
+        if type(base_model).__name__ in ("XGBRegressor", "XGBClassifier"):
+            import re, json as _json
+            booster = base_model.get_booster()
+            config = _json.loads(booster.save_config())
+            bs = config["learner"]["learner_model_param"]["base_score"]
+            scalar = re.sub(r"^\[(.*)\]$", r"\1", str(bs))
+            config["learner"]["learner_model_param"]["base_score"] = scalar
+            booster.load_config(_json.dumps(config))
+            explainer_model = booster
+        else:
+            explainer_model = base_model
+
+        explainer = _shap.TreeExplainer(explainer_model)
         # We also need to transform X_shap if it's a pipeline
         if hasattr(model, "named_steps"):
             X_shap_transformed = model[:-1].transform(X_shap)

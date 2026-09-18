@@ -18,6 +18,11 @@ func ComputeAOICloudCover(qaPath string, bbox [4]float64) (float64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("read qa: %w", err)
 	}
+	return ComputeAOICloudCoverBytes(raw, bbox)
+}
+
+// ComputeAOICloudCoverBytes is ComputeAOICloudCover for an in-memory QA TIFF.
+func ComputeAOICloudCoverBytes(raw []byte, bbox [4]float64) (float64, error) {
 	img, err := tiff.Decode(bytes.NewReader(raw))
 	if err != nil {
 		return 0, fmt.Errorf("decode qa: %w", err)

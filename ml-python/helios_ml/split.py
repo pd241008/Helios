@@ -8,10 +8,14 @@ with a warning if the marker is missing.  Never shuffles across years.
 
 from __future__ import annotations
 
+from typing import Literal
+
 import polars as pl
 
 TRAIN_LABEL = "train"
 TEST_LABEL = "test"
+
+SplitStrategy = Literal["marker", "dynamic"]
 
 
 def temporal_split(
@@ -22,6 +26,7 @@ def temporal_split(
     year_col: str = "year",
     train_years: tuple[int, int] | None = (2024, 2031),
     test_years: tuple[int, int] | None = (2032, 2033),
+    strategy: SplitStrategy = "marker",
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.Series, pl.Series]:
     """Split data into train/test respecting the temporal marker column.
 
@@ -36,21 +41,29 @@ def temporal_split(
     year_col
         Fallback year column used if *split_col* is missing.
     train_years, test_years
-        Inclusive (start, end) year ranges for the fallback.
+        Inclusive (start, end) year ranges for the fallback (unused in dynamic 12-month split).
+    strategy
+        - ``"marker"``: honour the pipeline-written ``split`` column when present,
+          falling back to the dynamic 12-month boundary otherwise.
+        - ``"dynamic"``: always use the rolling 12-month test window
+          (test = strictly later than latest_scene_date − 365 days), ignoring
+          any static marker column.
 
     Returns
     -------
     (X_train, X_test, y_train, y_test)
     """
+    if strategy == "dynamic":
+        return _split_by_last_12_months(features, target)
+
     if split_col in features.columns:
         return _split_by_marker(features, target, split_col)
 
     print(
         f"  WARNING: '{split_col}' column not found — "
-        f"falling back to year-based split [{train_years[0]}-{train_years[1]}] "
-        f"train / [{test_years[0]}-{test_years[1]}] test."
+        f"falling back to dynamic 12-month test boundary based on latest available scene."
     )
-    return _split_by_year(features, target, year_col, train_years, test_years)
+    return _split_by_last_12_months(features, target)
 
 
 def _split_by_marker(
@@ -79,23 +92,36 @@ def _split_by_marker(
     return X_train, X_test, y_train, y_test
 
 
-def _split_by_year(
+def _split_by_last_12_months(
     features: pl.DataFrame,
     target: pl.Series,
-    year_col: str,
-    train_years: tuple[int, int],
-    test_years: tuple[int, int],
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.Series, pl.Series]:
-    train_mask = features[year_col].is_between(train_years[0], train_years[1])
-    test_mask = features[year_col].is_between(test_years[0], test_years[1])
+    from datetime import timedelta
+    # 1. Reconstruct approximate datetime for each row from year and doy
+    df = features.with_columns([
+        (
+            pl.datetime(pl.col("year"), 1, 1) + pl.duration(days=pl.col("doy") - 1)
+        ).alias("_exact_date")
+    ])
+    
+    # 2. Find the absolute latest date in the entire dataset
+    max_date = df.select(pl.max("_exact_date")).item()
+    cutoff_date = max_date - timedelta(days=365)
+    
+    # 3. Apply the 12-month test boundary
+    train_mask = pl.col("_exact_date") <= cutoff_date
+    test_mask = pl.col("_exact_date") > cutoff_date
+    
+    X_train = df.filter(train_mask).drop("_exact_date", strict=False)
+    X_test = df.filter(test_mask).drop("_exact_date", strict=False)
+    
+    # Also filter target using the boolean mask directly against the series
+    train_series_mask = df.select(train_mask).get_column("_exact_date")
+    test_series_mask = df.select(test_mask).get_column("_exact_date")
+    
+    y_train = target.filter(train_series_mask)
+    y_test = target.filter(test_series_mask)
 
-    X_train = features.filter(train_mask).drop(year_col)
-    X_test = features.filter(test_mask).drop(year_col)
-    y_train = target.filter(train_mask)
-    y_test = target.filter(test_mask)
-
-    n_train = len(X_train)
-    n_test = len(X_test)
-    print(f"  Year-based split: {n_train} train / {n_test} test")
+    print(f"  Dynamic 12-mo split (cutoff {cutoff_date.date()}): {len(X_train)} train / {len(X_test)} test")
 
     return X_train, X_test, y_train, y_test
