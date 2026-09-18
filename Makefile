@@ -164,6 +164,14 @@ test: ## Run tests across all languages
 	cd $(SCALA_DIR) && sbt test
 	cd $(PY_DIR)    && uv run pytest -v
 
+verify: ## Verify shipped artifact checksums against the SHA-256 manifest
+	python3 verification/verify_manifest.py
+
+smoke: verify ## Fast artifact smoke test: checksums + go build + python tests
+	cd $(GO_DIR) && go build ./...
+	cd $(PY_DIR) && uv sync --quiet && uv run pytest -q
+	@echo "✓ Artifact smoke test passed."
+
 # ══════════════════════════════════════════════════════════════════
 #  CLEANUP
 # ══════════════════════════════════════════════════════════════════

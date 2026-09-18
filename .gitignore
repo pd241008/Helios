@@ -26,6 +26,7 @@ ml-python/data/
 __pycache__
 
 # ── IDE / OS ──────────────────────────────────────────────────
+*.zip
 .idea/
 .vscode/
 *.swp
