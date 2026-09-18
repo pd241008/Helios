@@ -1,0 +1,25 @@
+{
+  "artifact": "helios-lst-urban-climate-v12",
+  "manifest_id": "C1",
+  "claim": "Polyglot pipeline (Go ingestion, Spark/Sedona aggregation, Python ML) measures and predicts LST from Landsat 8/9 for two Indian metros",
+  "status": "verified-l2",
+  "requires": [
+    "planetary-computer-stac",
+    "osm-overpass"
+  ],
+  "scripts": [
+    "Makefile"
+  ],
+  "outputs": [
+    "results/chennai_v2/metrics.json",
+    "results/scene_inventory.md"
+  ],
+  "datasets": {
+    "bangalore_rows": 21480252,
+    "chennai_rows": 25848772,
+    "scenes": {
+      "bangalore": 26,
+      "chennai": 43
+    }
+  }
+}

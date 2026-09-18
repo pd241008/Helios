@@ -1,0 +1,19 @@
+{
+  "artifact": "helios-lst-urban-climate-v12",
+  "manifest_id": "C2",
+  "claim": "Chennai single XGBoost: 25.8M rows, fixed 2025-2026 holdout, R2=0.7999 (RMSE=2.50K, MAE=1.94K)",
+  "status": "verified-l1",
+  "script": "ml-python/helios_ml/train.py",
+  "checkpoint": "models/chennai_v2/lst_model.json",
+  "output": "results/chennai_v2/metrics.json",
+  "metrics": {
+    "mae_k": 1.942124843597412,
+    "rmse_k": 2.5016231036306027,
+    "r2": 0.7998980283737183,
+    "mape_pct": 0.6196480393409729
+  },
+  "split": {
+    "strategy": "marker",
+    "test_window": "2025-2026"
+  }
+}

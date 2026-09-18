@@ -1,0 +1,13 @@
+{
+  "artifact": "helios-lst-urban-climate-v12",
+  "manifest_id": "C6",
+  "claim": "Leak-free per-city temporal split policy (ADR-005)",
+  "status": "verified-l2",
+  "script": "ml-python/helios_ml/split.py",
+  "adr": "docs/adrs/005-temporal-split-policy.md",
+  "policies": {
+    "bangalore": "dynamic rolling 12-month",
+    "chennai": "marker calendar-year 2025-2026"
+  },
+  "tests": "ml-python/tests/test_data.py"
+}
