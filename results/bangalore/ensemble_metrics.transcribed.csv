@@ -1,0 +1,12 @@
+model,r2,rmse_k,mae_k,mape_pct,provenance
+XGBoost (single, primary),0.292,2.50,1.99,0.65,transcribed-from-manuscript-v12-table5
+XGBoost (Base, ensemble),0.324,2.446,1.955,0.644,transcribed-from-manuscript-v12-table5
+LightGBM (Base),0.339,2.420,2.050,0.676,transcribed-from-manuscript-v12-table5
+CatBoost (Base),0.273,2.537,2.190,0.722,transcribed-from-manuscript-v12-table5
+GradientBoost (Base),0.337,2.422,2.055,0.677,transcribed-from-manuscript-v12-table5
+Base Ensemble,0.513,2.077,1.732,0.571,transcribed-from-manuscript-v12-table5
+XGBoost (Tuned),0.310,2.472,1.968,0.648,transcribed-from-manuscript-v12-table5
+LightGBM (Tuned),0.332,2.431,2.063,0.680,transcribed-from-manuscript-v12-table5
+CatBoost (Tuned),0.334,2.428,2.072,0.683,transcribed-from-manuscript-v12-table5
+GradientBoost (Tuned),0.362,2.377,2.009,0.662,transcribed-from-manuscript-v12-table5
+Tuned Ensemble,0.529,2.041,1.696,0.559,transcribed-from-manuscript-v12-table5

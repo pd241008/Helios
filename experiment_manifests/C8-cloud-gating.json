@@ -1,0 +1,24 @@
+{
+  "artifact": "helios-lst-urban-climate-v12",
+  "manifest_id": "C8",
+  "claim": "AOI cloud gating retains 26/255 (Bangalore) and 43 (Chennai) scenes at <10% AOI cloud",
+  "status": "verified-l1",
+  "scripts": [
+    "ingestion-go/cmd/check_all_aoi_cloud",
+    "ingestion-go/cmd/only_qa"
+  ],
+  "output": "results/scene_inventory.md",
+  "stats": {
+    "bangalore": {
+      "retained": 26,
+      "candidates": 255,
+      "aoi_cloud_mean_pct": 2.72,
+      "aoi_cloud_max_pct": 9.26
+    },
+    "chennai": {
+      "retained": 43,
+      "aoi_cloud_mean_pct": 2.0,
+      "aoi_cloud_max_pct": 9.46
+    }
+  }
+}
