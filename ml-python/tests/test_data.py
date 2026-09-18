@@ -200,6 +200,7 @@ class TestLoadIntegration:
             pl.lit(0.0).alias("bt10_minus_bt11"),
             pl.lit("2024-01-01").alias("acquisition_date"),
             pl.lit("tile_1").alias("tile_id"),
+            pl.lit(1).alias("doy"),
         ])
         year_dir = tmp_path / "year=2024" / "split=train"
         year_dir.mkdir(parents=True)
@@ -215,6 +216,7 @@ class TestLoadIntegration:
             pl.lit(0.0).alias("bt10_minus_bt11"),
             pl.lit("2024-01-01").alias("acquisition_date"),
             pl.lit("tile_1").alias("tile_id"),
+            pl.lit(1).alias("doy"),
         ])
         year_dir = tmp_path / "year=2024" / "split=train"
         year_dir.mkdir(parents=True)
