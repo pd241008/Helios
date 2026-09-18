@@ -65,7 +65,7 @@ WATER_VAPOR_CAVEAT = (
 VARIABLES = ["LST_split_window", "LST_single_channel", "BT10_minus_BT11", "NDVI"]
 COLUMN_MAP = {
     "LST_split_window": "lst",
-    "LST_single_channel": "st_b10",
+    "LST_single_channel": "ST_B10",
     "BT10_minus_BT11": "bt10_minus_bt11",
     "NDVI": "ndvi",
 }
@@ -112,7 +112,6 @@ def load_data(data_dir: str | Path) -> pl.DataFrame:
         if col in df.columns:
             rename_map[col] = var
     df = df.rename(rename_map)
-    df = df.drop_nulls()
     return df
 
 
@@ -206,7 +205,7 @@ def generate_static_heatmaps(df: pl.DataFrame, output_dir: Path, years: list[int
 
         # Per-year
         for year in years:
-            sub = df.filter(pl.col("year") == year)
+            sub = df.filter(pl.col("year") == year).drop_nulls(subset=["lon", "lat", var])
             if len(sub) < 2:
                 continue
             lon = sub["lon"].to_numpy()
@@ -215,9 +214,10 @@ def generate_static_heatmaps(df: pl.DataFrame, output_dir: Path, years: list[int
             plot_static_heatmap(var, lon, lat, vals, str(year), output_dir)
 
         # Decadal aggregate
-        lon = df["lon"].to_numpy()
-        lat = df["lat"].to_numpy()
-        vals = df[var].to_numpy()
+        decadal_sub = df.drop_nulls(subset=["lon", "lat", var])
+        lon = decadal_sub["lon"].to_numpy()
+        lat = decadal_sub["lat"].to_numpy()
+        vals = decadal_sub[var].to_numpy()
         plot_static_heatmap(var, lon, lat, vals, "decadal", output_dir)
 
 
@@ -235,13 +235,15 @@ def generate_interactive_heatmaps(df: pl.DataFrame, output_dir: Path, years: lis
             continue
 
         for year in years:
-            sub = df.filter(pl.col("year") == year)
+            sub = df.filter(pl.col("year") == year).drop_nulls(subset=["lon", "lat", var])
             if len(sub) < 2:
                 continue
             _plot_folium_heatmap(sub, var, year, interactive_dir)
 
         # Decadal
-        _plot_folium_heatmap(df, var, "decadal", interactive_dir)
+        decadal_sub = df.drop_nulls(subset=["lon", "lat", var])
+        if len(decadal_sub) >= 2:
+            _plot_folium_heatmap(decadal_sub, var, "decadal", interactive_dir)
 
 
 def _plot_folium_heatmap(df: pl.DataFrame, var: str, year_label: str | int, output_dir: Path):
@@ -295,7 +297,7 @@ def generate_trend_panel(df: pl.DataFrame, output_dir: Path, years: list[int]):
         col = idx % n_cols
         ax = fig.add_subplot(gs[row, col])
 
-        sub = df.filter(pl.col("year") == year)
+        sub = df.filter(pl.col("year") == year).drop_nulls(subset=["lon", "lat", var])
         if sub is None or len(sub) < 2:
             ax.text(0.5, 0.5, "no data", transform=ax.transAxes, ha="center")
             ax.set_title(f"{year}")
