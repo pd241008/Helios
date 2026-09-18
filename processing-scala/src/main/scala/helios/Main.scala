@@ -46,9 +46,9 @@ object Main {
     SedonaSQLRegistrator.registerAll(spark)
 
     try {
-      val p21Path = s"${cfg.outputDir}/_intermediate/phase21_joined"
-      val p22Path = s"${cfg.outputDir}/_intermediate/phase22_with_lst"
-      val p23Path = s"${cfg.outputDir}/_intermediate/phase23_encoded"
+      val p21Path = s"${cfg.outputDir}_intermediate/phase21_joined"
+      val p22Path = s"${cfg.outputDir}_intermediate/phase22_with_lst"
+      val p23Path = s"${cfg.outputDir}_intermediate/phase23_encoded"
 
       var encoded = if (new java.io.File(s"$p23Path/_SUCCESS").exists()) {
         println(s"\n═══ Skipping Phases 2.1-2.3: Found existing Phase 2.3 output ═══")
@@ -82,22 +82,23 @@ object Main {
               spark, cfg.inputDir, cfg.zoningPath, cfg.lulcCategoryCol, cfg.sampleRate,
             )
 
-            val zoneDist = joined.groupBy(cfg.lulcCategoryCol).count().orderBy("count").collect()
-            println("  Per-zone pixel counts:")
-            zoneDist.foreach { r =>
-              println(s"    ${r.get(0)} = ${r.get(1)}")
-            }
-            val totalJoined = zoneDist.map(_.getLong(1)).sum
-            val totalZoned = zoneDist.filter(_.get(0) != null).map(_.getLong(1)).sum
-            val outsideAll = totalJoined - totalZoned
-            println(s"  Pixels inside any zone: $totalZoned")
-            println(s"  Pixels outside all zones: $outsideAll")
+            // val zoneDist = joined.groupBy(cfg.lulcCategoryCol).count().orderBy("count").collect()
+            // println("  Per-zone pixel counts:")
+            // zoneDist.foreach { r =>
+            //   println(s"    ${r.get(0)} = ${r.get(1)}")
+            // }
+            // val totalJoined = zoneDist.map(_.getLong(1)).sum
+            // val totalZoned = zoneDist.filter(_.get(0) != null).map(_.getLong(1)).sum
+            // val outsideAll = totalJoined - totalZoned
+            // println(s"  Pixels inside any zone: $totalZoned")
+            // println(s"  Pixels outside all zones: $outsideAll")
 
             joined.write
               .mode("overwrite")
               .option("compression", "zstd")
               .parquet(p21Path)
             println(s"  Saved Phase 2.1 intermediate: $p21Path")
+            joined = spark.read.parquet(p21Path)
           }
 
           println("\n═══ Phase 2.2: LST Computation ═══")
@@ -106,20 +107,21 @@ object Main {
           println(s"  Scene metadata files loaded: $metaCount")
           withLST = LSTMath.computeLST(joined, meta, cfg)
           
-          val lstCount = withLST.count()
-          println(s"  LST computed: $lstCount rows")
+          // val lstCount = withLST.count()
+          // println(s"  LST computed: $lstCount rows")
 
-          val splitDist = withLST.groupBy("has_thermal_split").count().collect()
-          println("  has_thermal_split distribution:")
-          splitDist.foreach { r =>
-            println(s"    ${r.get(0)} = ${r.get(1)}")
-          }
+          // val splitDist = withLST.groupBy("has_thermal_split").count().collect()
+          // println("  has_thermal_split distribution:")
+          // splitDist.foreach { r =>
+          //   println(s"    ${r.get(0)} = ${r.get(1)}")
+          // }
 
           withLST.write
             .mode("overwrite")
             .option("compression", "zstd")
             .parquet(p22Path)
           println(s"  Saved Phase 2.2 intermediate: $p22Path")
+          withLST = spark.read.parquet(p22Path)
         }
 
         println("\n═══ Phase 2.3: Target Encoding ═══")
@@ -135,7 +137,7 @@ object Main {
           .option("compression", "zstd")
           .parquet(p23Path)
         println(s"  Saved Phase 2.3 intermediate: $p23Path")
-
+        encoded = spark.read.parquet(p23Path)
       }
 
 
