@@ -142,6 +142,7 @@ func main() {
 			cfg,
 			logger,
 		)
+
 		sceneStats, err := pool.RunScenes(ctx, sceneTasks)
 		if err != nil {
 			slog.Error("ingestion failed", "error", err)

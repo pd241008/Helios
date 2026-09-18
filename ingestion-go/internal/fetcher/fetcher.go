@@ -14,8 +14,8 @@ import (
 const (
 	maxRetries        = 6
 	initialBackoff    = 2 * time.Second
-	perRequestTimeout = 2 * time.Minute
-	maxResponseBytes  = 512 << 20
+	perRequestTimeout = 10 * time.Minute
+	maxResponseBytes  = 2048 << 20
 )
 
 var client = &http.Client{
