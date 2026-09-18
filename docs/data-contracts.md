@@ -26,38 +26,58 @@ This document defines the schemas and contracts between pipeline stages. All int
 
 ## Stage 2 → Stage 3: Dense Feature Matrix
 
-**File:** `staging/dense/matrix.parquet`
+> [!IMPORTANT]
+> **Current contract (2026-08, dual-city).** Supersedes the single-city
+> `matrix.parquet` schema below. The dense matrix is a *wide* per-pixel
+> table partitioned by hive keys.
 
-**Schema:**
+**Locations:**
 
-| Column | Parquet Type | Logical Type | Description | Range |
-|--------|--------------|--------------|-------------|-------|
-| `lat` | DOUBLE | — | Latitude (WGS84, 4dp) | 12.8000--13.2000 |
-| `lon` | DOUBLE | — | Longitude (WGS84, 4dp) | 80.0000--80.4000 |
-| `timestamp` | INT64 | TIMESTAMP_MILLIS | Acquisition epoch millis | 2014--2023 |
-| `year` | INT32 | — | Year extracted from timestamp | 2014--2023 |
-| `month` | INT32 | — | Month extracted from timestamp | 1--12 |
-| `lst_k` | DOUBLE | — | Land Surface Temperature (Kelvin) | 290--330 |
-| `ndvi` | DOUBLE | — | Normalized Difference Vegetation Index | -0.5--1.0 |
-| `lulc_encoded` | DOUBLE | — | Target-encoded mean LST per LULC class | 295--320 |
-| `lulc_count` | INT32 | — | Sample count for the encoding group | 100--500000 |
+| City | Path | Rows | Partitioning |
+|------|------|------|--------------|
+| Bangalore | repo-local `staging/dense/` | 21,480,252 | `year=YYYY/split={train,test}/` |
+| Chennai v2 | `/mnt/f/helios-archive-recent/staging/dense_chennai_v2` | 25,848,772 | same |
 
-**Sort order:** `(year ASC, month ASC, lat ASC, lon ASC)`
+**Schema (wide, one row per pixel per scene):**
 
-**Compression:** Snappy, with ZSTD dictionary encoding for string columns.
+| Column | Type | Description |
+|--------|------|-------------|
+| `tile_id` | UTF8 | Landsat scene ID |
+| `lat`, `lon` | DOUBLE | Pixel center (WGS84) |
+| `doy` | INT32 | Day of year of acquisition |
+| `year`, `split` | INT64 / UTF8 | Hive partition keys (`split`: pipeline-written temporal label) |
+| `lst` | DOUBLE | Split-window LST target (Kelvin) |
+| `ndvi` | DOUBLE | Vegetation index |
+| `lulc_class_encoded` | DOUBLE | Encoded LULC class |
+| `zoning_category_encoded` | DOUBLE | Encoded zoning category |
+| `B4_Red`, `B5_NIR`, `B6_SWIR1` | DOUBLE | Surface reflectance bands |
+| `bt10`, `bt11`, `bt10_minus_bt11` | DOUBLE | Brightness temperatures (leakage-guarded) |
+| `ST_B10` | DOUBLE | Single-channel thermal band (leakage-guarded) |
+| `eps10`, `eps11`, `pv` | DOUBLE | Emissivities / vegetation fraction (excluded from features) |
+| `ndbi` | DOUBLE | Built-up index (excluded from features) |
+| `has_thermal_split` | BOOLEAN | Thermal availability flag |
 
-**Expected size:** ~500 MB for 10 years of monthly Chennai data.
+**Compression:** ZSTD. **Size:** ~450 MB (Chennai v2, 43 scenes).
+
+The legacy narrow schema (`band`/`value` long format, `lst_k`,
+`timestamp`/`month`) applies only to pre-v2 archived matrices.
 
 ---
 
 ## ML Input Contract
 
-The Python training pipeline consumes the dense matrix with these expectations:
+The Python ensemble pipeline consumes the dense matrix with these expectations:
 
-1. **No null values** — Spark stage must fill or drop any null cells.
-2. **Temporal ordering preserved** — The temporal split relies on `year` and `month` columns.
-3. **Numeric-only** — No string columns in the final matrix (target encoding replaces `lulc_class`).
-4. **Float precision** — 4 decimal places for lat/lon, 2 decimal places for LST/NDVI.
+1. **Hive partitioning** — `year` and `split` resolve from directory names;
+   `split` drives the `marker` split strategy (ADR-005). The `dynamic`
+   strategy ignores it and derives the boundary from `year`+`doy`.
+2. **Leakage guard** — thermal precursors (`ST_B10`, `bt10*`) are stripped
+   before training (ADR-001).
+3. **Feature exclusions** — `pv`, `eps10`, `eps11`, `ndbi`, plus non-feature
+   columns, dropped in `ensemble.py` step 4.
+4. **Seasonal features** — `doy_sin`/`doy_cos` added downstream from `doy`.
+5. **float32 conversion** — performed once after column pruning; polars
+   frames freed immediately (ADR-004).
 
 ---
 
