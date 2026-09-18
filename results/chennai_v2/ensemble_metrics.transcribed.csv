@@ -1,0 +1,11 @@
+model,mae_k,rmse_k,r2,provenance
+XGBoost (Base),1.903,2.465,0.806,transcribed-from-manuscript-v12-table3
+LightGBM (Base),2.100,2.775,0.754,transcribed-from-manuscript-v12-table3
+CatBoost (Base),2.007,2.619,0.781,transcribed-from-manuscript-v12-table3
+GradientBoost (Base),2.110,2.773,0.754,transcribed-from-manuscript-v12-table3
+Base Ensemble,1.972,2.565,0.790,transcribed-from-manuscript-v12-table3
+XGBoost (Lit.-standard config),2.225,2.917,0.728,transcribed-from-manuscript-v12-table3
+LightGBM (Lit.-standard config),2.224,2.930,0.726,transcribed-from-manuscript-v12-table3
+CatBoost (Lit.-standard config),1.895,2.438,0.810,transcribed-from-manuscript-v12-table3
+GradientBoost (Lit.-standard config),2.289,3.062,0.700,transcribed-from-manuscript-v12-table3
+Lit.-standard Ensemble,2.105,2.733,0.761,transcribed-from-manuscript-v12-table3

@@ -1,0 +1,14 @@
+{
+  "artifact": "helios-lst-urban-climate-v12",
+  "manifest_id": "C4",
+  "claim": "Chennai ensemble: base 0.790; best tuned CatBoost (lit-standard) 0.810; ensembling does not beat strong single model",
+  "status": "partial-archive",
+  "script": "ml-python/helios_ml/ensemble.py",
+  "flags": [
+    "--split-strategy",
+    "marker"
+  ],
+  "output": "results/chennai_v2/ensemble_metrics.transcribed.csv",
+  "partial_output": "results/chennai_v2/ensemble_metrics_partial.json",
+  "metrics_table": "paper Table 3"
+}

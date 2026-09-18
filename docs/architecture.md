@@ -2,7 +2,7 @@
 
 ## Overview
 
-Helios is a polyglot geospatial ML pipeline that predicts **Land Surface Temperature (LST)** for Chennai, India, using Landsat 8 satellite imagery and land-use/land-cover (LULC) features.
+Helios is a polyglot geospatial ML pipeline that predicts **Land Surface Temperature (LST)** for **Bangalore and Chennai, India**, using Landsat 8/9 satellite imagery and land-use/land-cover (LULC) features. Dataset inventory and cloud gates for both cities are documented in `docs/context-dual-city-datasets.md`.
 
 The pipeline is divided into three language-specific layers, each responsible for a distinct stage of data processing:
 

@@ -42,6 +42,7 @@ type Config struct {
 	RetryBackoff     time.Duration
 	StagingDir       string
 	OSMExtractPath   string
+	Limit            int
 }
 
 func DefaultConfig() Config {
@@ -61,6 +62,7 @@ func DefaultConfig() Config {
 		RetryBackoff:     500 * time.Millisecond,
 		StagingDir:       "./staging",
 		OSMExtractPath:   "",
+		Limit:            500,
 	}
 }
 

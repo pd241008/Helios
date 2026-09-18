@@ -1,0 +1,15 @@
+{
+  "artifact": "helios-lst-urban-climate-v12",
+  "manifest_id": "C9",
+  "claim": "Spatial inner join restricts data to zoning-covered pixels (26.7% Chennai, 34.52% Bangalore); explicit boundary",
+  "status": "verified-l2",
+  "script": "processing-scala/src/main/scala/helios/SpatialJoin.scala",
+  "outputs": [
+    "results/shap/appendix_zoning_sanity.png",
+    "results/shap/appendix_sliver_defect.png"
+  ],
+  "coverage": {
+    "chennai_pct": 26.7,
+    "bangalore_pct": 34.52
+  }
+}

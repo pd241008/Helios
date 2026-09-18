@@ -161,7 +161,7 @@ func DiscoverPCSplitWindowScenes(ctx context.Context, cfg config.Config) ([]Scen
 	log.Printf("[pc-discovery] collections: [\"%s\"]", PCCollectionL2)
 	log.Printf("[pc-discovery] datetime: %s", datetime)
 	log.Printf("[pc-discovery] bbox: %v", bbox)
-	log.Printf("[pc-discovery] limit: 500")
+	log.Printf("[pc-discovery] limit: %d", cfg.Limit)
 	log.Printf("[pc-discovery] filter (CQL2): %s", string(filterJSON))
 
 	req := STACSearchRequest{
@@ -169,7 +169,7 @@ func DiscoverPCSplitWindowScenes(ctx context.Context, cfg config.Config) ([]Scen
 		Datetime:    datetime,
 		BBox:        bbox,
 		Filter:      filter,
-		Limit:       500,
+		Limit:       cfg.Limit,
 	}
 
 	features, err := client.Search(ctx, req)

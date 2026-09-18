@@ -12,7 +12,21 @@ ROOT_DIR    := $(shell pwd)
 GO_DIR      := $(ROOT_DIR)/ingestion-go
 SCALA_DIR   := $(ROOT_DIR)/processing-scala
 PY_DIR      := $(ROOT_DIR)/ml-python
-STAGING_DIR := /mnt/f/helios-archive/staging
+AOI ?= chennai
+
+ifeq ($(AOI),bangalore)
+  STAGING_DIR := /mnt/f/helios-archive-bangalore/staging
+  BBOX_LON_MIN := 77.34
+  BBOX_LON_MAX := 77.90
+  BBOX_LAT_MIN := 12.83
+  BBOX_LAT_MAX := 13.16
+else
+  STAGING_DIR := /mnt/f/helios-archive/staging
+  BBOX_LON_MIN := 79.9469
+  BBOX_LON_MAX := 80.3450
+  BBOX_LAT_MIN := 12.8000
+  BBOX_LAT_MAX := 13.2300
+endif
 
 # ── External drive (F: / 931 GB, "Personal Use") ─────────────────
 ARCHIVE_DIR := /mnt/f/helios-archive
@@ -61,19 +75,71 @@ ingest: $(STAGING_DIR)/raw ## Run Go ingestion worker pool
 		--workers 4
 	@echo "✓ Raw parquet files written to $(STAGING_DIR)/raw"
 
+ingest-bangalore: ## Prep Bangalore Data Download
+	@echo "═══ Stage 1: Ingestion (Go) [Bangalore] ═══"
+	@mkdir -p /mnt/f/helios-archive-bangalore/staging/raw
+	cd $(GO_DIR) && go run ./cmd/ingest \
+		--output-dir /mnt/f/helios-archive-bangalore/staging/raw \
+		--stac-url https://planetarycomputer.microsoft.com/api/stac/v1 \
+		--bbox 77.34,12.83,77.90,13.16 \
+		--start-year 2016 --end-year 2026 \
+		--max-cloud 30 \
+		--workers 4
+	@echo "✓ Bangalore raw parquet files written to /mnt/f/helios-archive-bangalore/staging/raw"
+
 process: $(STAGING_DIR)/dense ## Run Scala/Spark aggregation
-	@echo "═══ Stage 2: Processing (Scala/Spark) ═══"
-	cd $(SCALA_DIR) && sbt "runMain helios.Main \
+	@echo "═══ Stage 2: Processing (Scala/Spark) [AOI=$(AOI)] ═══"
+	cd $(SCALA_DIR) && java -Xmx6g \
+		-Dspark.helios.bbox.lonMin=$(BBOX_LON_MIN) \
+		-Dspark.helios.bbox.lonMax=$(BBOX_LON_MAX) \
+		-Dspark.helios.bbox.latMin=$(BBOX_LAT_MIN) \
+		-Dspark.helios.bbox.latMax=$(BBOX_LAT_MAX) \
+		--add-opens=java.base/sun.nio.ch=ALL-UNNAMED \
+		--add-opens=java.base/java.lang=ALL-UNNAMED \
+		--add-opens=java.base/java.lang.reflect=ALL-UNNAMED \
+		--add-opens=java.base/java.nio=ALL-UNNAMED \
+		--add-opens=java.base/java.io=ALL-UNNAMED \
+		--add-opens=java.base/java.util=ALL-UNNAMED \
+		-cp target/scala-2.13/helios-processing-assembly-0.1.0.jar helios.Main \
 		--input $(STAGING_DIR)/raw \
-		--output $(STAGING_DIR)/dense"
+		--output $(STAGING_DIR)/dense \
+		--zoning-path $(STAGING_DIR)/raw/zoning.geojson \
+		--train-year-start 2016 \
+		--train-year-end 2024 \
+		--test-year-start 2025 \
+		--test-year-end 2026
 	@echo "✓ Dense matrix written to $(STAGING_DIR)/dense"
 
 train: ## Run Python ML training
 	@echo "═══ Stage 3: Training (Python/XGBoost) ═══"
 	cd $(PY_DIR) && uv run python -m helios_ml.train \
 		--data-dir $(STAGING_DIR)/dense \
-		--model-out $(PY_DIR)/models/lst_model.json
+		--reports-dir /mnt/f/helios-archive/metrics
 	@echo "✓ Model saved."
+
+# ══════════════════════════════════════════════════════════════════
+#  AB TEST TARGETS (Isolated Baseline Run)
+# ══════════════════════════════════════════════════════════════════
+
+process-abtest: ## Run Scala/Spark aggregation on the 60G baseline data to generate strict 25.1M row matrix with new features
+	@echo "═══ Stage 2: Processing (AB Test Baseline) ═══"
+	@mkdir -p /mnt/f/helios-archive-baseline/staging/tmp
+	cd $(SCALA_DIR) && java -Xmx6g -Dspark.local.dir=/mnt/f/helios-archive-baseline/staging/tmp --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED -cp target/scala-2.13/helios-processing-assembly-0.1.0.jar helios.Main \
+		--input /mnt/f/helios-archive-baseline/staging/raw \
+		--output /mnt/f/helios-archive-baseline/staging/dense_abtest \
+		--zoning-path /mnt/f/helios-archive-baseline/staging/raw/zoning.geojson \
+		--train-year-start 2016 \
+		--train-year-end 2024 \
+		--test-year-start 2025 \
+		--test-year-end 2026
+	@echo "✓ Strict AB-test Dense matrix written to /mnt/f/helios-archive-baseline/staging/dense_abtest"
+
+train-abtest: ## Run Python ML training on the strict AB test baseline matrix
+	@echo "═══ Stage 3: Training (AB Test Baseline) ═══"
+	cd $(PY_DIR) && uv run python -m helios_ml.train \
+		--data-dir /mnt/f/helios-archive-baseline/staging/dense_abtest \
+		--reports-dir /mnt/f/helios-archive-baseline/metrics_abtest
+	@echo "✓ AB test Model saved."
 
 # ══════════════════════════════════════════════════════════════════
 #  COMPOSITE TARGETS
@@ -97,6 +163,14 @@ test: ## Run tests across all languages
 	cd $(GO_DIR)    && go test ./... -v -race
 	cd $(SCALA_DIR) && sbt test
 	cd $(PY_DIR)    && uv run pytest -v
+
+verify: ## Verify shipped artifact checksums against the SHA-256 manifest
+	python3 verification/verify_manifest.py
+
+smoke: verify ## Fast artifact smoke test: checksums + go build + python tests
+	cd $(GO_DIR) && go build ./...
+	cd $(PY_DIR) && uv sync --quiet && uv run pytest -q
+	@echo "✓ Artifact smoke test passed."
 
 # ══════════════════════════════════════════════════════════════════
 #  CLEANUP

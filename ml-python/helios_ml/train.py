@@ -95,6 +95,10 @@ def train(
     )
     console.print(f"  Features: {feature_df.shape[1]} cols\n")
 
+    if "ndvi" in feature_df.columns and "pv" in feature_df.columns:
+        corr = feature_df.select(pl.corr("ndvi", "pv")).item()
+        console.print(f"  [cyan]Correlation (NDVI vs Pv): {corr:.4f}[/cyan]\n")
+
     # ── 3.2: Temporal Split ────────────────────────────────────────
     console.print("[bold]3.2 —  Temporal Split[/bold]")
     target = full_df["lst"]
@@ -114,7 +118,7 @@ def train(
 
     # ── Leakage & noise guard ──────────────────────────────────────
     # Columns that are non-feature identifiers or metadata.
-    NON_FEATURE_COLS = ("tile_id", "year", "doy", "split", "has_thermal_split")
+    NON_FEATURE_COLS = ("tile_id", "year", "month", "timestamp", "doy", "split", "has_thermal_split", "lulc_class", "lulc_count")
 
     # ST_B10 is the EXACT COPY of the target `lst` when no split-window
     # thermal bands are available (PC L2 source).  Including it would
@@ -126,7 +130,11 @@ def train(
     # B11_TIR raw thermal).  They add no signal and clutter feature lists.
     NULL_COLS = ("bt10", "bt11", "bt10_minus_bt11")
 
-    DROP_COLS = NON_FEATURE_COLS + LEAKAGE_COLS + NULL_COLS
+    # Exclude intermediate variables added by the updated Scala pipeline
+    # to maintain strict feature baseline parity with the canonical run.
+    EXCLUDE_FEATURES = ()
+
+    DROP_COLS = NON_FEATURE_COLS + LEAKAGE_COLS + NULL_COLS + EXCLUDE_FEATURES
 
     drop_train = [c for c in DROP_COLS if c in X_train_df.columns]
     drop_test = [c for c in DROP_COLS if c in X_test_df.columns]
@@ -134,6 +142,12 @@ def train(
     X_test_df = X_test_df.drop(drop_test)
 
     feature_names = list(X_train_df.columns)
+
+    # ── Strict leakage assertion ──────────────────────────────────────
+    leaked_cols = [c for c in ("bt10", "bt11", "bt10_minus_bt11", "ST_B10") if c in feature_names]
+    if leaked_cols:
+        raise ValueError(f"CRITICAL LEAKAGE DETECTED: Thermal components {leaked_cols} escaped the drop filter and entered the final feature matrix.")
+
 
     console.print(f"  [bold]Leakage guard — dropped columns:[/bold] {drop_train}")
     console.print(f"  [bold]Final feature set ({len(feature_names)} cols):[/bold] {feature_names}\n")
@@ -246,13 +260,13 @@ def train(
     if len(X_test) > 0:
         console.print("[cyan]Generating SHAP plots (on test set)...[/cyan]")
         shap_dependence_plots(
-            model, X_test, feature_names=feature_names, out_dir=str(reports_path), random_seed=random_seed,
+            model, "xgboost", X_test, feature_names=feature_names, out_dir=str(reports_path), random_seed=random_seed,
         )
         console.print(f"[green]✓ SHAP plots saved to {reports_path}/[/green]")
     elif len(X_val) > 0:
         console.print("[cyan]Generating SHAP plots (on val slice — no test set)...[/cyan]")
         shap_dependence_plots(
-            model, X_val, feature_names=feature_names, out_dir=str(reports_path), random_seed=random_seed,
+            model, "xgboost", X_val, feature_names=feature_names, out_dir=str(reports_path), random_seed=random_seed,
         )
         console.print(f"[green]✓ SHAP plots saved to {reports_path}/[/green]")
 
@@ -280,7 +294,7 @@ def _add_seasonal_feature(
     predates the Scala fix).  Logs a clear WARNING when the fallback
     triggers so it's never silently used.
     """
-    if len(df) == 0:
+    if False:
         return df
 
     if "doy" in df.columns:

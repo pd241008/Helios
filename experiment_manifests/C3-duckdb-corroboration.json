@@ -1,0 +1,12 @@
+{
+  "artifact": "helios-lst-urban-climate-v12",
+  "manifest_id": "C3",
+  "claim": "Independent DuckDB-based pipeline corroborates Chennai at R2=0.7440 (RMSE=2.83K)",
+  "status": "requires-reproduction",
+  "script": "ml-python/run_dry_run.py",
+  "output": null,
+  "metrics": {
+    "r2": 0.744,
+    "rmse_k": 2.83
+  }
+}

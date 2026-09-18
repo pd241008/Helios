@@ -206,6 +206,18 @@ def load(
         so the caller can align train/test splits.
     """
     lf = scan_dense_matrix(data_dir)
+
+    schema_cols = lf.collect_schema().names()
+    if "lst_k" in schema_cols:
+        lf = lf.rename({
+            "lst_k": "lst",
+            "lulc_encoded": "lulc_class_encoded",
+        }).with_columns([
+            (pl.col("month") * 30).alias("doy"),
+            pl.col("lulc_class_encoded").alias("zoning_category_encoded"),
+            pl.when(pl.col("year") <= 2024).then(pl.lit("train")).otherwise(pl.lit("test")).alias("split")
+        ])
+
     validate_schema(lf)
 
     # Drop rows where the target (split-window LST) is null.

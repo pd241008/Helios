@@ -35,7 +35,11 @@ Query the USGS LandsatLook STAC API to discover Landsat 8 Collection 2 Level 2 s
 | BBox | `80.0,12.8,80.4,13.2` |
 | Datetime | `2014-01-01/2023-12-31` |
 | Filter | `eo:cloud_cover < 10` |
-| Limit | 500 |
+| Limit | `-limit N` (Hard boundary) |
+
+> [!WARNING]
+> **STAC Pagination & Limits**
+> The STAC API `limit` parameter defines *page size*, not total features. The Go worker implements a hard boundary internally (`stac.go`) to explicitly truncate features and break the pagination loop once the user-specified `-limit` is reached. See ADR-002.
 
 **Asset Bands to Download:**
 
@@ -148,7 +152,8 @@ cd ingestion-go && go run ./cmd/ingest \
     --bbox 80.0,12.8,80.4,13.2 \
     --start-year 2014 \
     --end-year 2023 \
-    --max-cloud 10
+    --max-cloud 10 \
+    --limit 80
 ```
 
 ## Milestone

@@ -1,0 +1,15 @@
+{
+  "artifact": "helios-lst-urban-climate-v12",
+  "manifest_id": "C7",
+  "claim": "SHAP: seasonal encoding dominant (Chennai); ensembling recovers zoning/NDVI signal (Bangalore)",
+  "status": "verified-l1",
+  "script": "ml-python/helios_ml/evaluate.py",
+  "outputs": [
+    "results/shap/chennai/",
+    "results/shap/bangalore/"
+  ],
+  "params": {
+    "sample_rows": 10000,
+    "seed": 42
+  }
+}

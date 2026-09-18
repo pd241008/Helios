@@ -7,14 +7,7 @@ import org.apache.spark.storage.StorageLevel
 
 object SpatialJoin {
 
-  // Chennai AOI bounding box — same coordinates used throughout the pipeline
-  // (Go ingestion --bbox, Makefile, Python analysis scripts).
-  // All zone polygons lie within this box, so any pixel outside it is
-  // guaranteed to be discarded by the spatial join's INNER filter.
-  val CHENNAI_BBOX_LON_MIN = 79.9469
-  val CHENNAI_BBOX_LON_MAX = 80.3450
-  val CHENNAI_BBOX_LAT_MIN = 12.8000
-  val CHENNAI_BBOX_LAT_MAX = 13.2300
+
 
   def pivotBands(df: DataFrame): DataFrame = {
     val pivoted = df
@@ -66,8 +59,8 @@ object SpatialJoin {
       ON ST_Contains(z.geometry, ST_Point(p.lon, p.lat))
       """
     )
-    val totalJoined = joinedAll.count()
-    println(s"  [count-2] Spatial join (LEFT, all pixels, before zone filter): $totalJoined rows")
+    // val totalJoined = joinedAll.count()
+    // println(s"  [count-2] Spatial join (LEFT, all pixels, before zone filter): $totalJoined rows")
 
     // INNER filter: keep only pixels that fell inside a zone polygon.
     // This is the count-3 metric. The difference (count-2 − count-3)
@@ -75,13 +68,13 @@ object SpatialJoin {
     // parser reads the full 185 km × 185 km Landsat scene, while zones
     // cover only a small fraction of it.
     val joined = joinedAll.filter(col(categoryCol).isNotNull)
-    val numInsideZones = joined.count()
-    val outsideAllZones = totalJoined - numInsideZones
-    println(s"  [count-3] Pixels inside any zone (after zone filter): $numInsideZones rows")
-    println(s"  Pixels outside all zones (count-2 − count-3): $outsideAllZones rows")
-    if (totalJoined > 0) {
-      println(s"  Zone coverage: ${"%.2f".format(numInsideZones.toDouble / totalJoined * 100)}% of pivoted pixels")
-    }
+    // val numInsideZones = joined.count()
+    // val outsideAllZones = totalJoined - numInsideZones
+    // println(s"  [count-3] Pixels inside any zone (after zone filter): $numInsideZones rows")
+    // println(s"  Pixels outside all zones (count-2 − count-3): $outsideAllZones rows")
+    // if (totalJoined > 0) {
+    //   println(s"  Zone coverage: ${"%.2f".format(numInsideZones.toDouble / totalJoined * 100)}% of pivoted pixels")
+    // }
 
     println("\n═══ Spatial Join Physical Plan ═══")
     joined.explain(true)
@@ -129,8 +122,13 @@ object SpatialJoin {
     //     target encoding's global mean, feature matrix all operate
     //     on zone-matched pixels only).
     //   • The spatial join's INNER filter would discard them anyway.
-    val inBbox = col("lon").between(CHENNAI_BBOX_LON_MIN, CHENNAI_BBOX_LON_MAX) &&
-                 col("lat").between(CHENNAI_BBOX_LAT_MIN, CHENNAI_BBOX_LAT_MAX)
+    val lonMin = spark.conf.get("spark.helios.bbox.lonMin", "79.9469").toDouble
+    val lonMax = spark.conf.get("spark.helios.bbox.lonMax", "80.3450").toDouble
+    val latMin = spark.conf.get("spark.helios.bbox.latMin", "12.8000").toDouble
+    val latMax = spark.conf.get("spark.helios.bbox.latMax", "13.2300").toDouble
+    
+    val inBbox = col("lon").between(lonMin, lonMax) &&
+                 col("lat").between(latMin, latMax)
     val filtered = sampled.filter(inBbox)
 
     // ── STAGE COUNT 0: raw parquet load ──────────────────────────
@@ -169,11 +167,8 @@ object SpatialJoin {
     val joined = spatialJoin(pivoted, zones, categoryCol)
     // Cache the join result — it will be used 3 times downstream
     // (zone distribution count, LST computation, and diagnostics).
-    // MEMORY_AND_DISK_SER serializes to reduce memory footprint.
-    joined.persist(StorageLevel.MEMORY_AND_DISK_SER)
     val numJoined = joined.count()
     println(s"  Spatial join result (inside zones): $numJoined rows")
-    println(s"  Spatial join result cached (MEMORY_AND_DISK_SER)")
 
     joined
   }
