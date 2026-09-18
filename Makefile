@@ -12,7 +12,21 @@ ROOT_DIR    := $(shell pwd)
 GO_DIR      := $(ROOT_DIR)/ingestion-go
 SCALA_DIR   := $(ROOT_DIR)/processing-scala
 PY_DIR      := $(ROOT_DIR)/ml-python
-STAGING_DIR := /mnt/f/helios-archive/staging
+AOI ?= chennai
+
+ifeq ($(AOI),bangalore)
+  STAGING_DIR := /mnt/f/helios-archive-bangalore/staging
+  BBOX_LON_MIN := 77.34
+  BBOX_LON_MAX := 77.90
+  BBOX_LAT_MIN := 12.83
+  BBOX_LAT_MAX := 13.16
+else
+  STAGING_DIR := /mnt/f/helios-archive/staging
+  BBOX_LON_MIN := 79.9469
+  BBOX_LON_MAX := 80.3450
+  BBOX_LAT_MIN := 12.8000
+  BBOX_LAT_MAX := 13.2300
+endif
 
 # ── External drive (F: / 931 GB, "Personal Use") ─────────────────
 ARCHIVE_DIR := /mnt/f/helios-archive
@@ -74,8 +88,19 @@ ingest-bangalore: ## Prep Bangalore Data Download
 	@echo "✓ Bangalore raw parquet files written to /mnt/f/helios-archive-bangalore/staging/raw"
 
 process: $(STAGING_DIR)/dense ## Run Scala/Spark aggregation
-	@echo "═══ Stage 2: Processing (Scala/Spark) ═══"
-	cd $(SCALA_DIR) && java -Xmx6g --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED -cp target/scala-2.13/helios-processing-assembly-0.1.0.jar helios.Main \
+	@echo "═══ Stage 2: Processing (Scala/Spark) [AOI=$(AOI)] ═══"
+	cd $(SCALA_DIR) && java -Xmx6g \
+		-Dspark.helios.bbox.lonMin=$(BBOX_LON_MIN) \
+		-Dspark.helios.bbox.lonMax=$(BBOX_LON_MAX) \
+		-Dspark.helios.bbox.latMin=$(BBOX_LAT_MIN) \
+		-Dspark.helios.bbox.latMax=$(BBOX_LAT_MAX) \
+		--add-opens=java.base/sun.nio.ch=ALL-UNNAMED \
+		--add-opens=java.base/java.lang=ALL-UNNAMED \
+		--add-opens=java.base/java.lang.reflect=ALL-UNNAMED \
+		--add-opens=java.base/java.nio=ALL-UNNAMED \
+		--add-opens=java.base/java.io=ALL-UNNAMED \
+		--add-opens=java.base/java.util=ALL-UNNAMED \
+		-cp target/scala-2.13/helios-processing-assembly-0.1.0.jar helios.Main \
 		--input $(STAGING_DIR)/raw \
 		--output $(STAGING_DIR)/dense \
 		--zoning-path $(STAGING_DIR)/raw/zoning.geojson \
