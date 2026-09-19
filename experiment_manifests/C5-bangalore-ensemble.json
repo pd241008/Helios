@@ -2,13 +2,13 @@
   "artifact": "helios-lst-urban-climate-v12",
   "manifest_id": "C5",
   "claim": "Bangalore: individual models unstable (R2 0.27-0.36); four-model ensemble recovers R2=0.529 tuned / 0.513 base",
-  "status": "requires-reproduction",
+  "status": "archived-evidence",
   "script": "ml-python/helios_ml/ensemble.py",
   "flags": [
     "--split-strategy",
     "dynamic"
   ],
-  "output": "results/bangalore/ensemble_metrics.transcribed.csv",
+  "output": "results/bangalore/ensemble_metrics.json",
   "metrics": {
     "base_ensemble_r2": 0.513,
     "tuned_ensemble_r2": 0.529,
@@ -18,5 +18,11 @@
     "strategy": "dynamic",
     "cutoff": "2024-12-10"
   },
-  "note": "per-model JSON lost in cleanup; table transcribed from manuscript v12"
+  "evidence": {
+    "raw_metrics_sha256": "f7cf99066dad26136967a2096d9e9e7988da367688d526f8f3dbbc8a52132395",
+    "run_completed": "2026-08-21T11:35:47+05:30",
+    "single_model_metrics": "results/bangalore/single_model_metrics.json",
+    "split_evidence": "results/bangalore/split_evidence.txt"
+  },
+  "note": "raw 10-row run JSON recovered 2026-09-19 from the archive volume (earlier claim that it was lost in a cleanup was incorrect); matches manuscript v12 Table 5 to 3 decimals"
 }

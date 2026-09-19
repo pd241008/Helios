@@ -1,0 +1,15 @@
+city                : chennai
+data_dir            : /mnt/f/helios-archive-recent/staging/dense_chennai_v2
+rule                : FIXED calendar-year window from pipeline-written partition markers
+                      (test := year in {2025, 2026}; identical to the single-model R2=0.7999 evaluation window)
+invocation          : python -m helios_ml.ensemble --data-dir <dense> \
+                        --reports-dir /mnt/f/helios-archive/reports/ml-ensemble-fullres-v3-chennai-fixedwindow \
+                        --split-strategy marker
+
+split          rows    pct  scenes  LST_mean  LST_std  first_scene   last_scene
+train    19,306,133  74.7%      32   312.654    5.628   2016-04-23   2024-09-12
+test      6,542,639  25.3%      11   313.139    5.592   2025-02-03   2026-06-06
+
+test_set_scenes (11): 2025-034, 2025-042, 2025-066, 2025-074, 2025-114, 2025-218, 2026-061, 2026-093, 2026-109, 2026-117, 2026-157
+note                : 11 test scenes — superset of the 9-scene single-model eval (two Feb-2025 scenes
+                      were ingested after that run); same window definition (calendar years >= 2025).

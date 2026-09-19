@@ -1,0 +1,50 @@
+cff-version: 1.2.0
+title: >-
+  Helios: reproducibility artifact for "Measurement and Prediction of Land
+  Surface Temperature in Chennai and Bangalore, India, Using a Polyglot
+  Machine Learning Pipeline and Landsat 8/9 Imagery"
+message: >-
+  If you use this artifact, please cite it using the metadata below, and
+  cite the accompanying manuscript (preferred-citation).
+type: software
+authors:
+  - family-names: Desai
+    given-names: Prathmesh
+    orcid: "https://orcid.org/0009-0008-0051-5537"
+  - family-names: Mandal
+    given-names: Himadri Nirjhar
+    orcid: "https://orcid.org/0000-0002-1957-8078"
+version: 1.0.1
+date-released: "2026-09-19"
+license: MIT
+repository-code: "https://github.com/pd241008/Helios"
+keywords:
+  - land surface temperature
+  - Landsat 8/9
+  - remote sensing
+  - machine learning
+  - urban climate
+  - reproducibility
+abstract: >-
+  Reproducibility artifact for the Helios polyglot pipeline (Go ingestion,
+  Scala/Spark aggregation, Python ML) that measures and predicts land
+  surface temperature for Chennai and Bangalore, India, from Landsat 8/9
+  imagery. Includes trained ensemble checkpoints, raw metric JSONs, split
+  evidence, machine-readable scene inventories, and SHAP figures backing
+  the paper's tables and figures.
+preferred-citation:
+  type: article
+  title: >-
+    Measurement and Prediction of Land Surface Temperature in Chennai and
+    Bangalore, India, Using a Polyglot Machine Learning Pipeline and
+    Landsat 8/9 Imagery
+  authors:
+    - family-names: Desai
+      given-names: Prathmesh
+      orcid: "https://orcid.org/0009-0008-0051-5537"
+    - family-names: Mandal
+      given-names: Himadri Nirjhar
+      orcid: "https://orcid.org/0000-0002-1957-8078"
+  year: 2026
+  journal: Urban Climate
+  notes: Under review at the time of artifact release.

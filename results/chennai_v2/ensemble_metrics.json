@@ -1,0 +1,82 @@
+{
+  "XGBoost (Base)": {
+    "mae": 1.9029886722564697,
+    "rmse": 2.4645663194453373,
+    "r2": 0.8057823777198792,
+    "mape_pct": 0.606415331363678,
+    "shap_sample_rows": 10000
+  },
+  "LightGBM (Base)": {
+    "mae": 2.1003565788269043,
+    "rmse": 2.774654669367113,
+    "r2": 0.7538354396820068,
+    "mape_pct": 0.667610228061676,
+    "shap_sample_rows": 10000
+  },
+  "CatBoost (Base)": {
+    "mae": 2.006727933883667,
+    "rmse": 2.6192142666812077,
+    "r2": 0.7806439399719238,
+    "mape_pct": 0.6385429501533508,
+    "shap_sample_rows": 10000
+  },
+  "GradientBoost (Base)": {
+    "mae": 2.1099843978881836,
+    "rmse": 2.772807304887345,
+    "r2": 0.7541631460189819,
+    "mape_pct": 0.6708574891090393,
+    "shap_sample_rows": 10000
+  },
+  "Base Ensemble": {
+    "mae": 1.9716835021972656,
+    "rmse": 2.564943776546235,
+    "r2": 0.789639949798584,
+    "mape_pct": 0.6272848844528198,
+    "members": [
+      "XGBoost (Base)",
+      "LightGBM (Base)",
+      "CatBoost (Base)",
+      "GradientBoost (Base)"
+    ]
+  },
+  "XGBoost (Tuned)": {
+    "mae": 2.22465181350708,
+    "rmse": 2.9169480505951086,
+    "r2": 0.7279398441314697,
+    "mape_pct": 0.7085837125778198,
+    "shap_sample_rows": 10000
+  },
+  "LightGBM (Tuned)": {
+    "mae": 2.223787307739258,
+    "rmse": 2.929723144314415,
+    "r2": 0.7255516052246094,
+    "mape_pct": 0.7065799832344055,
+    "shap_sample_rows": 10000
+  },
+  "CatBoost (Tuned)": {
+    "mae": 1.894973874092102,
+    "rmse": 2.4376628527892055,
+    "r2": 0.8099994659423828,
+    "mape_pct": 0.6039015054702759,
+    "shap_sample_rows": 10000
+  },
+  "GradientBoost (Tuned)": {
+    "mae": 2.2889504432678223,
+    "rmse": 3.062402996161818,
+    "r2": 0.7001305222511292,
+    "mape_pct": 0.7266367077827454,
+    "shap_sample_rows": 10000
+  },
+  "Tuned Ensemble": {
+    "mae": 2.1054604053497314,
+    "rmse": 2.7329315735409,
+    "r2": 0.7611830830574036,
+    "mape_pct": 0.6696828603744507,
+    "members": [
+      "XGBoost (Tuned)",
+      "LightGBM (Tuned)",
+      "CatBoost (Tuned)",
+      "GradientBoost (Tuned)"
+    ]
+  }
+}

@@ -18,19 +18,24 @@ Explicit boundaries of this artifact. Read before citing numbers.
 
 ## Results provenance
 
-4. **Bangalore per-model result JSONs are not persisted.** The per-model
-   numbers in paper Table 5 were produced by
-   `helios_ml.ensemble --split-strategy dynamic` but the run's JSON was
-   lost in a cleanup; the table in `results/bangalore/` is a transcription
-   from manuscript v12. The generating script and split are intact
-   (claim C5: `requires-reproduction`).
-5. **Chennai full ensemble JSON is partial.** Only XGBoost/LightGBM (Base)
-   rows survive in `results/chennai_v2/ensemble_metrics_partial.json`;
-   the complete Table 3 is transcribed from manuscript v12.
-6. **Scene inventory.** The per-scene table (`table_B1_chennai_scenes`)
-   referenced by `docs/context-dual-city-datasets.md` was not persisted;
-   `results/scene_inventory.md` carries the aggregate facts (counts,
-   periods, achieved AOI cloud).
+4. **Bangalore per-model JSON — recovered 2026-09-19.** The ensemble run's
+   raw `ensemble_metrics.json` (written 2026-08-21 11:35 IST,
+   `ml-ensemble-fullres-v2-bangalore` on the archive volume) survives and
+   is now shipped at `results/bangalore/ensemble_metrics.json`. All 10
+   rows match manuscript Table 5 to 3 decimals (sha256 recorded in
+   `manifest/evidence_sha256.txt`). An earlier revision of this file
+   wrongly stated that the run's JSON was lost in a cleanup.
+5. **Chennai full ensemble JSON — recovered 2026-09-19.** The complete
+   10-row run output (`ml-ensemble-fullres-v3-chennai-fixedwindow`,
+   2026-08-22) is shipped at `results/chennai_v2/ensemble_metrics.json`
+   and matches Table 3; the earlier partial archive
+   (`ensemble_metrics_partial.json`) and the Table 3 transcription are
+   retained for provenance.
+6. **Scene inventory.** Per-scene CSVs for both cities are now shipped
+   (`results/bangalore/scene_inventory.csv`, 26 scenes;
+   `results/chennai_v2/scene_inventory.csv`, 43 scenes), generated from
+   the archived per-scene `scene_metadata.json` and cross-checked against
+   the aggregates in `results/scene_inventory.md`.
 7. **`results/archive/metrics_unlabeled_2026-08-19_run.json`** is retained
    for provenance only (negative R², unlabeled configuration — likely a
    stale-split run per ADR-005). Do not cite it.

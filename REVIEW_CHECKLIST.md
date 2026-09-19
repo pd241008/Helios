@@ -8,6 +8,10 @@ expected outcomes in `EXPECTED_OUTPUTS.md`.
 - [ ] `make verify` prints `verify_manifest: PASS (2/2 entries)`
 - [ ] `manifest/checkpoint_sha256.txt` lists exactly the two shipped models
       (`models/chennai_v1/lst_model.json`, `models/chennai_v2/lst_model.json`)
+- [ ] `manifest/evidence_sha256.txt` covers the evidence bundle added
+      2026-09-19 (raw ensemble JSONs, split evidence, scene CSVs, 16
+      ensemble checkpoints, full SHAP sets);
+      `sha256sum -c manifest/evidence_sha256.txt` passes
 
 ## Environment (≈2 min)
 
@@ -24,6 +28,15 @@ expected outcomes in `EXPECTED_OUTPUTS.md`.
       XGBoost (Base) r2 = 0.8058, LightGBM (Base) r2 = 0.7538
 - [ ] `results/bangalore/ensemble_metrics.transcribed.csv`:
       Tuned Ensemble r2 = 0.529, Base Ensemble r2 = 0.513 (paper Table 5)
+- [ ] `results/bangalore/ensemble_metrics.json`: raw 10-row run output
+      (2026-08-21); every row matches the transcription to 3 decimals;
+      Tuned Ensemble r2 = 0.5292495489120483
+- [ ] `results/chennai_v2/ensemble_metrics.json`: raw 10-row run output
+      (2026-08-22); matches paper Table 3
+- [ ] `results/bangalore/scene_inventory.csv` and
+      `results/chennai_v2/scene_inventory.csv`: 26 / 43 scenes;
+      split columns and AOI-cloud aggregates match
+      `results/scene_inventory.md`
 - [ ] `results/scene_inventory.md`: 26 scenes Bangalore / 43 Chennai;
       AOI cloud gate < 10% both cities
 
