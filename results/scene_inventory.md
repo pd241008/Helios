@@ -1,9 +1,10 @@
 # Scene Inventory (aggregate)
 
-Aggregate scene-acquisition facts per city. The per-scene table
-(`table_B1_chennai_scenes.{md,csv}`) referenced by earlier drafts was not
-persisted; regenerating it is possible via `ingestion-go/cmd/check_all_aoi_cloud`
-(claim C8). See `LIMITATIONS.md` item 6.
+Aggregate scene-acquisition facts per city. Per-scene CSVs are shipped:
+`bangalore/scene_inventory.csv` (26 scenes) and
+`chennai_v2/scene_inventory.csv` (43 scenes), generated from the archived
+per-scene `scene_metadata.json` files and consistent with the table below
+(see `LIMITATIONS.md` item 6).
 
 | | Bangalore | Chennai (v2) |
 |---|---|---|
