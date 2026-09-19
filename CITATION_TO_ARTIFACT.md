@@ -5,8 +5,8 @@
 | Field | Value |
 |---|---|
 | Artifact | Helios LST reproducibility artifact |
-| Version | 1.0.0 |
-| Date | 2026-09-18 |
+| Version | 1.0.1 |
+| Date | 2026-09-19 |
 | Corresponds to | Manuscript v12, *"Measurement and Prediction of Land Surface Temperature in Chennai and Bangalore, India, Using a Polyglot Machine Learning Pipeline and Landsat 8/9 Imagery"* (Urban Climate submission) |
 | License | MIT (code, models, figures) · CC-BY-4.0 (data deposits) — see `LICENSE` |
 
@@ -24,7 +24,7 @@ MINOR and regenerates `manifest/checkpoint_sha256.txt`.
 > Desai, P. (https://orcid.org/0009-0008-0051-5537), & Mandal, H. N.
 > (https://orcid.org/0000-0002-1957-8078). (2026). *Helios: reproducibility artifact for
 > "Measurement and Prediction of Land Surface Temperature in Chennai and
-> Bangalore, India"* (v1.0.0). Zenodo. DOI pending deposit.
+> Bangalore, India"* (v1.0.1). Zenodo. DOI pending deposit.
 
 **Paper:**
 
