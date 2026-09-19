@@ -44,6 +44,6 @@ The pipeline has three stages in three languages:
 |---|---|---|
 | C2 | Chennai single-model R²=0.7999 | `results/chennai_v2/metrics.json` |
 | C4 | Chennai ensemble: base 0.790, best tuned 0.810 | paper Table 3 (partial archive) |
-| C5 | Bangalore ensemble rescues weak models (0.529) | paper Table 5 (transcribed) |
+| C5 | Bangalore ensemble rescues weak models (0.529) | paper Table 5; raw run JSON `results/bangalore/ensemble_metrics.json` |
 | C6 | Leak-free per-city split policy | ADR-005, `helios_ml/split.py` |
 | C7 | Seasonal encoding dominates SHAP | `results/shap/` |
