@@ -150,7 +150,7 @@ Helios/
 - [x] **Phase 2** — Aggregation: Spark spatial join, LST math, target encoding, dense matrix
 - [x] **Phase 3** — ML: Polars loading, per-city temporal splits, 4-model ensemble, SHAP
 - [x] **Artifact** — Claim map, verification/reproduction guides, pinned models, archived results
-- [ ] **Zenodo deposit** — DOI registration (see `CITATION_TO_ARTIFACT.md`)
+- [x] **Zenodo deposit** — published as v1.0.2: [DOI 10.5281/zenodo.22840937](https://doi.org/10.5281/zenodo.22840937) (see `CITATION_TO_ARTIFACT.md`)
 
 ---
 
