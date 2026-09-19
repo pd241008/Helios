@@ -1,0 +1,22 @@
+city                : bangalore
+data_dir            : ../staging/dense
+rule                : dynamic rolling 12-month window (cutoff = latest_scene_date - 365d)
+latest_scene_date   : 2025-12-10
+cutoff_date         : 2024-12-10   (test = _date > cutoff)
+
+split          rows    pct  scenes  LST_mean  LST_std  first_scene   last_scene
+train    18,214,775  84.8%      22   309.329    5.845   2016-04-21   2024-10-28
+test      3,265,477  15.2%       4   303.332    2.975   2024-12-15   2025-12-10
+
+test_set_scenes (4): 2024-350, 2024-366, 2025-320, 2025-344
+
+run_log_excerpt     :
+    [full-resolution] No sampling applied — 21,480,252 rows.
+    Dynamic 12-mo split (cutoff 2024-12-10): 18214775 train / 3265477 test
+    Train: 18214775 rows | Test: 3265477 rows
+
+invocation          : python -m helios_ml.ensemble --data-dir <dense> --reports-dir <reports>
+                      (no split CLI flag exists by design: boundary is computed dynamically,
+                       see helios_ml/split.py::temporal_split(strategy="dynamic"), called at
+                       helios_ml/ensemble.py step 2)
+generated           : 2026-08-21 14:37:37 IST

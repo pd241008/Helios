@@ -37,7 +37,7 @@ Open the shipped result files and compare against the paper tables:
 |---|---|
 | Table 2 (Chennai single-model metrics) | `results/chennai_v2/metrics.json` |
 | Table 3 (Chennai ensemble — partial) | `results/chennai_v2/ensemble_metrics_partial.json` |
-| Table 5 (Bangalore ensemble) | see `results/README.md` |
+| Table 5 (Bangalore ensemble) | `results/bangalore/ensemble_metrics.json` (raw run output; transcription in `results/bangalore/ensemble_metrics.transcribed.csv`) |
 | Figures 5–8 (SHAP) | `results/shap/*.png` |
 
 ## Step 4 — Load a shipped model (optional)

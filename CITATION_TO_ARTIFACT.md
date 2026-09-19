@@ -5,8 +5,9 @@
 | Field | Value |
 |---|---|
 | Artifact | Helios LST reproducibility artifact |
-| Version | 1.0.0 |
-| Date | 2026-09-18 |
+| Version | 1.0.2 |
+| DOI | [10.5281/zenodo.22840937](https://doi.org/10.5281/zenodo.22840937) |
+| Date | 2026-09-19 |
 | Corresponds to | Manuscript v12, *"Measurement and Prediction of Land Surface Temperature in Chennai and Bangalore, India, Using a Polyglot Machine Learning Pipeline and Landsat 8/9 Imagery"* (Urban Climate submission) |
 | License | MIT (code, models, figures) · CC-BY-4.0 (data deposits) — see `LICENSE` |
 
@@ -21,13 +22,15 @@ MINOR and regenerates `manifest/checkpoint_sha256.txt`.
 
 **Software / artifact:**
 
-> Desai, P., & Mandal, H. N. (2026). *Helios: reproducibility artifact for
+> Desai, P. (https://orcid.org/0009-0008-0051-5537), & Mandal, H. N.
+> (https://orcid.org/0000-0002-1957-8078). (2026). *Helios: reproducibility artifact for
 > "Measurement and Prediction of Land Surface Temperature in Chennai and
-> Bangalore, India"* (v1.0.0). Zenodo. DOI pending deposit.
+> Bangalore, India"* (v1.0.2). Zenodo. https://doi.org/10.5281/zenodo.22840937
 
 **Paper:**
 
-> Desai, P., & Mandal, H. N. Measurement and Prediction of Land Surface
+> Desai, P. (https://orcid.org/0009-0008-0051-5537), & Mandal, H. N.
+> (https://orcid.org/0000-0002-1957-8078). Measurement and Prediction of Land Surface
 > Temperature in Chennai and Bangalore, India, Using a Polyglot Machine
 > Learning Pipeline and Landsat 8/9 Imagery. *Urban Climate* (under review).
 
@@ -35,7 +38,7 @@ MINOR and regenerates `manifest/checkpoint_sha256.txt`.
 
 - [ ] Zip the repository at the tagged commit (excluding `.git`, `staging/`,
       `.venv/`, `target/`)
-- [ ] Deposit the zip on Zenodo; record the DOI above
+- [x] Deposit the zip on Zenodo (v1.0.2, DOI: 10.5281/zenodo.22840937)
 - [ ] Deposit regenerated data products (scene inventory CSV, dense-matrix
       schemas) as a separate CC-BY-4.0 Zenodo record
 - [ ] Update the Data availability statement in `main.tex` with the DOI
