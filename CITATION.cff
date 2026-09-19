@@ -10,8 +10,10 @@ type: software
 authors:
   - family-names: Desai
     given-names: Prathmesh
+    orcid: "https://orcid.org/0009-0008-0051-5537"
   - family-names: Mandal
     given-names: Himadri Nirjhar
+    orcid: "https://orcid.org/0000-0002-1957-8078"
 version: 1.1.0
 date-released: "2026-09-19"
 license: MIT
@@ -39,8 +41,10 @@ preferred-citation:
   authors:
     - family-names: Desai
       given-names: Prathmesh
+      orcid: "https://orcid.org/0009-0008-0051-5537"
     - family-names: Mandal
       given-names: Himadri Nirjhar
+      orcid: "https://orcid.org/0000-0002-1957-8078"
   year: 2026
   journal: Urban Climate
   notes: Under review at the time of artifact release.
