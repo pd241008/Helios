@@ -140,7 +140,6 @@ Helios/
 | [Dual-City Datasets](docs/context-dual-city-datasets.md) | Scene inventory, cloud gates, dataset provenance |
 | [ADRs](docs/adrs/) | Architectural decision records (001–005) |
 | [Postmortems](docs/postmortems/) | Incident analyses (OOM, runaway pagination) |
-| [Artifact Checklist](docs/submission-artifact-checklist.md) | Gap analysis vs exemplar artifact |
 
 ---
 
@@ -151,6 +150,7 @@ Helios/
 - [x] **Phase 3** — ML: Polars loading, per-city temporal splits, 4-model ensemble, SHAP
 - [x] **Artifact** — Claim map, verification/reproduction guides, pinned models, archived results
 - [x] **Zenodo deposit** — published as v1.0.2: [DOI 10.5281/zenodo.22840937](https://doi.org/10.5281/zenodo.22840937) (see `CITATION_TO_ARTIFACT.md`)
+- [x] **Manuscript status** — Accepted for publication in *Urban Climate* (Received: 25 Sep 2026, Revised: 3 Nov 2026, Accepted: 12 Nov 2026)
 
 ---
 

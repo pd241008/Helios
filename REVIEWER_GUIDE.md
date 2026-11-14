@@ -4,9 +4,9 @@ Entry point for reviewers. Total fast-verification time: **~10 minutes**.
 
 ## What this artifact is
 
-Reproducibility artifact for *"Measurement and Prediction of Land Surface
-Temperature in Chennai and Bangalore, India, Using a Polyglot Machine
-Learning Pipeline and Landsat 8/9 Imagery"* (Urban Climate submission).
+Reproducibility artifact for *"Measurement and Prediction of Landsat-derived
+Land Surface Temperature in Chennai and Bangalore, India, Using a Polyglot
+Machine Learning Pipeline"* (*Urban Climate*, Accepted 12 Nov 2026).
 
 The pipeline has three stages in three languages:
 
