@@ -14,9 +14,9 @@ authors:
   - family-names: Mandal
     given-names: Himadri Nirjhar
     orcid: "https://orcid.org/0000-0002-1957-8078"
-version: 1.0.2
-doi: 10.5281/zenodo.22840937
-date-released: "2026-09-19"
+version: 1.0.3
+doi: 10.5281/zenodo.24214860
+date-released: "2026-11-14"
 license: MIT
 repository-code: "https://github.com/pd241008/Helios"
 keywords:
