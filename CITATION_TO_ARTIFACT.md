@@ -8,7 +8,9 @@
 | Version | 1.0.2 |
 | DOI | [10.5281/zenodo.22840937](https://doi.org/10.5281/zenodo.22840937) |
 | Date | 2026-09-19 |
-| Corresponds to | Manuscript v12, *"Measurement and Prediction of Land Surface Temperature in Chennai and Bangalore, India, Using a Polyglot Machine Learning Pipeline and Landsat 8/9 Imagery"* (Urban Climate submission) |
+| Corresponds to | Accepted article, *"Measurement and Prediction of Landsat-derived Land Surface Temperature in Chennai and Bangalore, India, Using a Polyglot Machine Learning Pipeline"* (*Urban Climate*, 2026) |
+| Journal | *Urban Climate* (Elsevier) |
+| History | Received 25 Sep 2026 · Revised 3 Nov 2026 · Accepted 12 Nov 2026 |
 | License | MIT (code, models, figures) · CC-BY-4.0 (data deposits) — see `LICENSE` |
 
 ## Versioning scheme
@@ -30,18 +32,15 @@ MINOR and regenerates `manifest/checkpoint_sha256.txt`.
 **Paper:**
 
 > Desai, P. (https://orcid.org/0009-0008-0051-5537), & Mandal, H. N.
-> (https://orcid.org/0000-0002-1957-8078). Measurement and Prediction of Land Surface
-> Temperature in Chennai and Bangalore, India, Using a Polyglot Machine
-> Learning Pipeline and Landsat 8/9 Imagery. *Urban Climate* (under review).
+> (https://orcid.org/0000-0002-1957-8078). (2026). Measurement and Prediction of
+> Landsat-derived Land Surface Temperature in Chennai and Bangalore, India, Using a
+> Polyglot Machine Learning Pipeline. *Urban Climate* (Accepted 12 Nov 2026).
 
-## Deposit checklist (before submission)
+## Deposit record
 
-- [ ] Zip the repository at the tagged commit (excluding `.git`, `staging/`,
-      `.venv/`, `target/`)
-- [x] Deposit the zip on Zenodo (v1.0.2, DOI: 10.5281/zenodo.22840937)
-- [ ] Deposit regenerated data products (scene inventory CSV, dense-matrix
-      schemas) as a separate CC-BY-4.0 Zenodo record
-- [ ] Update the Data availability statement in `main.tex` with the DOI
+- **Repository Archive:** Pinned to release tag `v1.0.2` (excluding `.git`, `staging/`, `.venv/`, `target/`).
+- **Zenodo Deposit:** Published under DOI [10.5281/zenodo.22840937](https://doi.org/10.5281/zenodo.22840937) (v1.0.2).
+- **Data Availability:** Data availability statement and artifact DOI are incorporated into the accepted manuscript.
 
 ## Related identifiers
 

@@ -1,8 +1,8 @@
 cff-version: 1.2.0
 title: >-
-  Helios: reproducibility artifact for "Measurement and Prediction of Land
-  Surface Temperature in Chennai and Bangalore, India, Using a Polyglot
-  Machine Learning Pipeline and Landsat 8/9 Imagery"
+  Helios: reproducibility artifact for "Measurement and Prediction of
+  Landsat-derived Land Surface Temperature in Chennai and Bangalore, India,
+  Using a Polyglot Machine Learning Pipeline"
 message: >-
   If you use this artifact, please cite it using the metadata below, and
   cite the accompanying manuscript (preferred-citation).
@@ -36,9 +36,8 @@ abstract: >-
 preferred-citation:
   type: article
   title: >-
-    Measurement and Prediction of Land Surface Temperature in Chennai and
-    Bangalore, India, Using a Polyglot Machine Learning Pipeline and
-    Landsat 8/9 Imagery
+    Measurement and Prediction of Landsat-derived Land Surface Temperature in
+    Chennai and Bangalore, India, Using a Polyglot Machine Learning Pipeline
   authors:
     - family-names: Desai
       given-names: Prathmesh
@@ -48,4 +47,4 @@ preferred-citation:
       orcid: "https://orcid.org/0000-0002-1957-8078"
   year: 2026
   journal: Urban Climate
-  notes: Under review at the time of artifact release.
+  notes: Accepted for publication in Urban Climate (2026).
