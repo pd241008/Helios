@@ -19,7 +19,10 @@ numbers to the methodology that produced them.
 | 2026-08 | Full-resolution ensemble shipped: serialize-after-fit, chunked predict, float32 | ADR-004 |
 | 2026-08 | Temporal split policy finalized: per-city (dynamic vs marker) | ADR-005 |
 | 2026-09 | DuckDB-based independent corroboration of Chennai (R²=0.7440) | `ml-python/run_dry_run.py` (paper §Results) |
-| 2026-09 | Paper v12 (Urban Climate submission) — numbers frozen | `results/` + `EXPECTED_OUTPUTS.md` |
+| 2026-09-19 | Artifact v1.0.2 released and deposited on Zenodo | DOI: 10.5281/zenodo.22840937 |
+| 2026-09-25 | Received at Editorial Office (*Urban Climate*) | Initial submission |
+| 2026-11-03 | Article revised | Revision addressing reviewer comments |
+| 2026-11-12 | Article accepted for publication in *Urban Climate* | Elsevier publication acceptance |
 
 ## Superseded approaches
 

@@ -1,0 +1,11 @@
+name = "helios_proofs"
+version = "0.1.0"
+defaultTargets = ["helios_proofs"]
+
+[[lean_lib]]
+name = "HeliosProofs"
+
+[[lean_exe]]
+name = "helios_proofs"
+root = "Main"
+

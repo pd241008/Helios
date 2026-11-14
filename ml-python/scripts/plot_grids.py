@@ -66,6 +66,31 @@ def generate_grid(data_dir, output_path, var_name, cmap, vmin, vmax, title_prefi
             sc = ax.scatter(lons, lats, c=var_data, cmap=cmap, s=0.5, alpha=0.8, vmin=vmin, vmax=vmax)
             ax.set_title(f"{title_prefix} - {year}")
             ax.axis('off')
+            
+            # Add scale bar and north arrow to panel
+            x_min, x_max = lons.min(), lons.max()
+            y_min, y_max = lats.min(), lats.max()
+            lon_span = x_max - x_min
+            # 1 deg lon ~ 108.46 km at 13 deg N
+            km_per_deg = 108.46
+            deg_10km = 10.0 / km_per_deg
+            
+            # Scale bar in bottom-left
+            sb_x = x_min + 0.05 * lon_span
+            sb_y = y_min + 0.05 * (y_max - y_min)
+            ax.plot([sb_x, sb_x + deg_10km], [sb_y, sb_y], color='black', linewidth=2.5, solid_capstyle='butt')
+            ax.plot([sb_x, sb_x], [sb_y - 0.005, sb_y + 0.005], color='black', linewidth=1.5)
+            ax.plot([sb_x + deg_10km, sb_x + deg_10km], [sb_y - 0.005, sb_y + 0.005], color='black', linewidth=1.5)
+            ax.text(sb_x + deg_10km / 2.0, sb_y + 0.008, '10 km', ha='center', va='bottom', fontsize=8, fontweight='bold', color='black',
+                    bbox=dict(boxstyle='square,pad=0.1', facecolor='white', alpha=0.7, edgecolor='none'))
+            
+            # North arrow in top-right
+            na_x = x_max - 0.08 * lon_span
+            na_y = y_max - 0.08 * (y_max - y_min)
+            ax.annotate('N', xy=(na_x, na_y), xytext=(na_x, na_y - 0.03 * (y_max - y_min)),
+                        arrowprops=dict(facecolor='black', width=1.5, headwidth=5),
+                        ha='center', va='bottom', fontsize=9, fontweight='bold',
+                        bbox=dict(boxstyle='square,pad=0.1', facecolor='white', alpha=0.7, edgecolor='none'))
         except Exception as e:
             print(f"Error processing year {year}: {e}")
             ax.set_title(f"{title_prefix} - {year} (Error)")
