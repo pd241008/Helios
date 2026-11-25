@@ -2,7 +2,7 @@
 
 This directory contains the machine-checked formal verification in Lean 4 (version 4.35.0) and the computational verification suite for all theoretical foundations, invariance laws, and variance projection scaling identities established in the paper:
 
-> **"Measurement and Prediction of Landsat-derived Land Surface Temperature in Chennai and Bangalore, India, Using a Polyglot Machine Learning Pipeline"** (*Urban Climate*, Accepted 12 Nov 2026).
+> **"Measurement and Prediction of Landsat-derived Land Surface Temperature in Chennai and Bangalore, India, Using a Polyglot Machine Learning Pipeline"** (*Urban Climate*, Vol. 70, 103231, Dec 2026; [DOI 10.1016/j.uclim.2026.103231](https://doi.org/10.1016/j.uclim.2026.103231)).
 
 ---
 

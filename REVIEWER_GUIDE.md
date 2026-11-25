@@ -6,7 +6,7 @@ Entry point for reviewers. Total fast-verification time: **~10 minutes**.
 
 Reproducibility artifact for *"Measurement and Prediction of Landsat-derived
 Land Surface Temperature in Chennai and Bangalore, India, Using a Polyglot
-Machine Learning Pipeline"* (*Urban Climate*, Accepted 12 Nov 2026).
+Machine Learning Pipeline"* (*Urban Climate*, Vol. 70, 103231, Dec 2026; [DOI 10.1016/j.uclim.2026.103231](https://doi.org/10.1016/j.uclim.2026.103231)).
 
 The pipeline has three stages in three languages:
 
