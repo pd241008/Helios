@@ -10,9 +10,13 @@ type: software
 authors:
   - family-names: Desai
     given-names: Prathmesh
+    email: prathmeshpdesai@gmail.com
+    affiliation: Department of Computing Technologies, School of Computing, SRM Institute of Science and Technology, Kattankulathur, India
     orcid: "https://orcid.org/0009-0008-0051-5537"
   - family-names: Mandal
     given-names: Himadri Nirjhar
+    email: himadrim@srmist.edu.in
+    affiliation: Department of Computing Technologies, School of Computing, SRM Institute of Science and Technology, Kattankulathur, India
     orcid: "https://orcid.org/0000-0002-1957-8078"
 version: 1.0.3
 doi: 10.5281/zenodo.24214860
@@ -41,10 +45,19 @@ preferred-citation:
   authors:
     - family-names: Desai
       given-names: Prathmesh
+      email: prathmeshpdesai@gmail.com
+      affiliation: Department of Computing Technologies, School of Computing, SRM Institute of Science and Technology, Kattankulathur, India
       orcid: "https://orcid.org/0009-0008-0051-5537"
     - family-names: Mandal
       given-names: Himadri Nirjhar
+      email: himadrim@srmist.edu.in
+      affiliation: Department of Computing Technologies, School of Computing, SRM Institute of Science and Technology, Kattankulathur, India
       orcid: "https://orcid.org/0000-0002-1957-8078"
   year: 2026
+  month: 12
   journal: Urban Climate
-  notes: Accepted for publication in Urban Climate (2026).
+  volume: 70
+  pages: "103231"
+  doi: 10.1016/j.uclim.2026.103231
+  url: "https://doi.org/10.1016/j.uclim.2026.103231"
+  notes: Published in Urban Climate, Vol. 70, 103231 (2026). Author preprint licensed under CC BY-NC 4.0.
