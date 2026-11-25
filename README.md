@@ -150,13 +150,13 @@ Helios/
 - [x] **Phase 3** — ML: Polars loading, per-city temporal splits, 4-model ensemble, SHAP
 - [x] **Artifact** — Claim map, verification/reproduction guides, pinned models, archived results
 - [x] **Zenodo deposit** — published as v1.0.3: [DOI 10.5281/zenodo.24214860](https://doi.org/10.5281/zenodo.24214860) (see `CITATION_TO_ARTIFACT.md`)
-- [x] **Manuscript status** — Accepted for publication in *Urban Climate* (Received: 25 Sep 2026, Revised: 3 Nov 2026, Accepted: 12 Nov 2026)
+- [x] **Manuscript status** — Published in *Urban Climate*, Vol. 70, Article 103231 (Dec 2026): [DOI 10.1016/j.uclim.2026.103231](https://doi.org/10.1016/j.uclim.2026.103231) (Received: 25 Sep 2026, Revised: 3 Nov 2026, Accepted: 12 Nov 2026)
 
 ---
 
 ## 📄 License
 
-Code and models: **MIT**. Data deposits: **CC-BY-4.0**. Landsat imagery courtesy of NASA/USGS; OpenStreetMap data © OpenStreetMap contributors (ODbL). See [LICENSE](LICENSE).
+Code and models: **MIT**. Data deposits: **CC-BY-4.0**. Author preprint manuscript: **CC BY-NC 4.0**. Landsat imagery courtesy of NASA/USGS; OpenStreetMap data © OpenStreetMap contributors (ODbL). See [LICENSE](LICENSE).
 
 ---
 

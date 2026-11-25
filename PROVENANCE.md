@@ -26,6 +26,7 @@ numbers to the methodology that produced them.
 | 2026-11-03 | Article revised | Revision addressing reviewer comments |
 | 2026-11-12 | Article accepted for publication in *Urban Climate* | Elsevier publication acceptance |
 | 2026-11-14 | Artifact v1.0.3 released and deposited on Zenodo | DOI: 10.5281/zenodo.24214860 |
+| 2026-11-25 | Article published in *Urban Climate*, Vol. 70, 103231 (Dec 2026) | DOI: 10.1016/j.uclim.2026.103231 |
 
 ## Superseded approaches
 

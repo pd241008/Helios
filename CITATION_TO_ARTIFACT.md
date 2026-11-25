@@ -8,10 +8,10 @@
 | Version | 1.0.3 |
 | DOI | [10.5281/zenodo.24214860](https://doi.org/10.5281/zenodo.24214860) |
 | Date | 2026-11-14 |
-| Corresponds to | Accepted article, *"Measurement and Prediction of Landsat-derived Land Surface Temperature in Chennai and Bangalore, India, Using a Polyglot Machine Learning Pipeline"* (*Urban Climate*, 2026) |
+| Corresponds to | Published article, *"Measurement and Prediction of Landsat-derived Land Surface Temperature in Chennai and Bangalore, India, Using a Polyglot Machine Learning Pipeline"* (*Urban Climate*, Vol. 70, Dec 2026, 103231, DOI: [10.1016/j.uclim.2026.103231](https://doi.org/10.1016/j.uclim.2026.103231)) |
 | Journal | *Urban Climate* (Elsevier) |
-| History | Received 25 Sep 2026 · Revised 3 Nov 2026 · Accepted 12 Nov 2026 |
-| License | MIT (code, models, figures) · CC-BY-4.0 (data deposits) — see `LICENSE` |
+| History | Received 25 Sep 2026 · Revised 3 Nov 2026 · Accepted 12 Nov 2026 · Published Dec 2026 (Online Nov 2026) |
+| License | MIT (code, models, figures) · CC-BY-4.0 (data deposits) · CC BY-NC 4.0 (author preprint) — see `LICENSE` |
 
 ## Versioning scheme
 
@@ -35,7 +35,8 @@ MINOR and regenerates `manifest/checkpoint_sha256.txt`.
 > Desai, P. (https://orcid.org/0009-0008-0051-5537), & Mandal, H. N.
 > (https://orcid.org/0000-0002-1957-8078). (2026). Measurement and Prediction of
 > Landsat-derived Land Surface Temperature in Chennai and Bangalore, India, Using a
-> Polyglot Machine Learning Pipeline. *Urban Climate* (Accepted 12 Nov 2026).
+> Polyglot Machine Learning Pipeline. *Urban Climate*, 70, 103231.
+> https://doi.org/10.1016/j.uclim.2026.103231
 
 ## Version history & Zenodo DOI registry
 

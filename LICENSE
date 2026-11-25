@@ -28,6 +28,9 @@ Datasets produced by this pipeline and deposited publicly (e.g. Zenodo
 archival deposits of dense matrices, scene inventories, or result tables)
 are licensed separately under Creative Commons Attribution 4.0 International
 (CC-BY-4.0). Derived model checkpoints and figures in this repository follow
-the MIT license above. Landsat imagery is courtesy of the NASA/USGS Landsat
-program; OpenStreetMap data is (c) OpenStreetMap contributors, available
-under the Open Database License (ODbL).
+the MIT license above. The authors' accepted manuscript (preprint) of the
+associated article (doi:10.1016/j.uclim.2026.103231) is licensed under
+Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0).
+Landsat imagery is courtesy of the NASA/USGS Landsat program; OpenStreetMap
+data is (c) OpenStreetMap contributors, available under the Open Database
+License (ODbL).

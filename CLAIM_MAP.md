@@ -2,7 +2,7 @@
 
 Stable identifiers for every scientific claim in the Helios artifact. Each
 entry links a paper claim to its evidence, generating script, and output file.
-Claim numbering mirrors the accepted manuscript (Urban Climate, Accepted 12 Nov 2026).
+Claim numbering mirrors the published manuscript (*Urban Climate*, Vol. 70, 103231, Dec 2026; [DOI 10.1016/j.uclim.2026.103231](https://doi.org/10.1016/j.uclim.2026.103231)).
 
 | ID | Paper Claim | Manifest | Evidence | Script | Output |
 |---|---|---|---|---|---|
